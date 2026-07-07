@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: summer_homework_checkin
+title: 暑假作业打卡系统（FastAPI 后端 + 静态前端）
+scope:
+    - summer-homework-checkin/
+source_files: []
+depends_on: []
+related_to:
+    - path: points_system

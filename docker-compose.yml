@@ -1,0 +1,58 @@
+# 暑假作业相关项目 —— Docker 本地部署编排
+# 使用：在 hanghang_WS 目录下执行
+#   docker compose up -d --build
+# 访问：
+#   summer-homework 学生端  http://localhost:8000/
+#   summer-homework 管理端  http://localhost:8000/admin/
+#   points-system    前端    http://localhost:8001/
+# 停止：docker compose down   （加 -v 可同时删除数据卷）
+
+services:
+  # ---------- 暑假作业打卡系统 ----------
+  summer-homework:
+    build:
+      context: ./summer-homework-checkin
+      dockerfile: Dockerfile
+    container_name: summer-homework
+    ports:
+      - "8000:8000"
+    environment:
+      # 数据库与上传目录重定向到持久化卷
+      DB_PATH: /data/app.db
+      UPLOAD_DIR: /data/uploads
+      # 安全配置（生产环境请更换为随机字符串）
+      SUMMER_SECRET: summer-prod-secret-change-me-in-production
+      ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+    volumes:
+      - summer-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------- 打卡积分兑换系统 ----------
+  points-system:
+    build:
+      context: ./points-system
+      dockerfile: Dockerfile
+    container_name: points-system
+    ports:
+      - "8001:8000"
+    environment:
+      DB_PATH: /data/app.db
+    volumes:
+      - points-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  summer-data:
+  points-data:

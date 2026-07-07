@@ -1,0 +1,75 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: Q0DeR-MaG1C-BrAnCh-Fo2-NoN-GiT-Or-No-C0MmIt
+nodes_managed: true
+exported_at: "2026-07-07T16:28:16Z"
+modules:
+    "":
+        dir_name: 全栈游戏与积分系统聚合仓库
+        title: 全栈游戏与积分系统聚合仓库
+        scope:
+            - optimized-prompt.md
+            - snake-game-architecture.md
+            - snake-game-prd.md
+            - snake-game-project-plan.md
+            - 兑换记录后台管理需求提示词.md
+        source_files: []
+        children:
+            - points_system
+            - snake_game
+            - summer_homework_checkin
+        depends_on: []
+        related_to: []
+    points_system:
+        dir_name: 打卡积分与抽奖兑换子系统
+        title: 打卡积分与抽奖兑换子系统
+        scope:
+            - points-system/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: summer_homework_checkin
+    snake_game:
+        dir_name: 贪吃蛇游戏前端应用（Canvas + DOM）
+        title: 贪吃蛇游戏前端应用（Canvas + DOM）
+        scope:
+            - snake-game/
+        source_files: []
+        children:
+            - snake_game/game_core
+            - snake_game/ui_screens
+        depends_on: []
+        related_to: []
+    snake_game/game_core:
+        dir_name: 贪吃蛇游戏核心引擎与工具库
+        title: 贪吃蛇游戏核心引擎与工具库
+        scope:
+            - snake-game/js/core/
+            - snake-game/js/utils/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: snake_game/ui_screens
+    snake_game/ui_screens:
+        dir_name: 游戏 UI 界面模块（HUD_菜单_排行榜_设置）
+        title: 游戏 UI 界面模块（HUD/菜单/排行榜/设置）
+        scope:
+            - snake-game/js/ui/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: snake_game/game_core
+    summer_homework_checkin:
+        dir_name: 暑假作业打卡系统（FastAPI 后端 + 静态前端）
+        title: 暑假作业打卡系统（FastAPI 后端 + 静态前端）
+        scope:
+            - summer-homework-checkin/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: points_system

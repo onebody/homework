@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: points_system
+title: 打卡积分与抽奖兑换子系统
+scope:
+    - points-system/
+source_files: []
+depends_on: []
+related_to:
+    - path: summer_homework_checkin

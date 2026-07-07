@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: ""
+title: 全栈游戏与积分系统聚合仓库
+scope:
+    - optimized-prompt.md
+    - snake-game-architecture.md
+    - snake-game-prd.md
+    - snake-game-project-plan.md
+    - 兑换记录后台管理需求提示词.md
+source_files: []
+depends_on: []
+related_to: []

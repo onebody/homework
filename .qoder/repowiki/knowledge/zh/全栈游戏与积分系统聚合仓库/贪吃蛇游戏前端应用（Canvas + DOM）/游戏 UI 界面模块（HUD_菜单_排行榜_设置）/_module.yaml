@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: snake_game/ui_screens
+title: 游戏 UI 界面模块（HUD/菜单/排行榜/设置）
+scope:
+    - snake-game/js/ui/
+source_files: []
+depends_on: []
+related_to:
+    - path: snake_game/game_core

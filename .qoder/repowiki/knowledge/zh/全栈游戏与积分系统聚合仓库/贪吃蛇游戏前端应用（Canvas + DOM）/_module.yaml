@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: snake_game
+title: 贪吃蛇游戏前端应用（Canvas + DOM）
+scope:
+    - snake-game/
+source_files: []
+depends_on: []
+related_to: []
