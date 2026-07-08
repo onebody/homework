@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>打卡系统 · 后台管理</title>
+  <link rel="stylesheet" href="/admin/admin.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" v-cloak>
+  <!-- 登录 -->
+  <div class="login" v-if="!token">
+    <div class="login-card">
+      <h1>🔐 后台管理登录</h1>
+      <input v-model="loginForm.username" placeholder="管理员用户名" />
+      <input v-model="loginForm.password" type="password" placeholder="密码" />
+      <button class="primary" @click="login">登录</button>
+      <p class="tip">请联系系统管理员获取账号</p>
+    </div>
+  </div>
+
+  <div class="layout" v-else>
+    <!-- 手机端顶部栏 -->
+    <header class="m-topbar">
+      <span class="m-brand">📚 管理后台</span>
+      <span class="m-title">{{ currentViewName }}</span>
+      <button class="m-logout" @click="logout">退出</button>
+    </header>
+
+    <aside class="side">
+      <div class="brand">📚 打卡管理后台</div>
+      <div class="menu">
+        <div :class="{on:view==='dashboard'}" @click="view='dashboard'">📈 数据概览</div>
+        <div :class="{on:view==='prizes'}" @click="view='prizes'">🎁 奖品管理</div>
+        <div :class="{on:view==='users'}" @click="view='users'">👥 用户管理</div>
+        <div :class="{on:view==='redeems'}" @click="loadRedeems">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
+        <div :class="{on:view==='checkins'}" @click="view='checkins'">📸 打卡记录</div>
+        <div :class="{on:view==='challenges'}" @click="view='challenges'; loadChallengeTasks()">🏆 闯关任务 <span class="nav-badge" v-if="challengePendingCount>0">{{ challengePendingCount }}</span></div>
+      </div>
+      <button class="logout" @click="logout">退出登录</button>
+    </aside>
+
+    <main class="main">
+      <!-- 概览 -->
+      <section v-if="view==='dashboard'">
+        <h2>数据概览</h2>
+        <div class="stats" v-if="stats">
+          <div class="stat"><div class="v">{{ stats.students }}</div><div class="k">学生数</div></div>
+          <div class="stat"><div class="v">{{ stats.parents }}</div><div class="k">家长数</div></div>
+          <div class="stat"><div class="v">{{ stats.effective_checkins }}</div><div class="k">有效打卡</div></div>
+          <div class="stat"><div class="v">{{ stats.bindings }}</div><div class="k">绑定关系</div></div>
+          <div class="stat warn"><div class="v">{{ stats.geo_risk_checkins }}</div><div class="k">位置异常打卡</div></div>
+        </div>
+        <p class="muted">暑假统计窗口：{{ stats && stats.summer_window }}</p>
+      </section>
+
+      <!-- 奖品管理 -->
+      <section v-if="view==='prizes'">
+        <div class="bar">
+          <h2>奖品管理</h2>
+          <button class="primary" @click="openAdd">+ 新增奖品</button>
+        </div>
+        <table class="prize-table">
+          <thead><tr><th>名称</th><th>类别</th><th>概率</th><th>库存</th><th>积分</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="p in prizes" :key="p.id">
+              <td>{{ p.name }}<br><small class="muted">{{ p.description }}</small><br><small v-if="p.is_lottery_ticket" style="color:#e67e22">🎰 抽奖机会×{{ p.ticket_qty }}</small></td>
+              <td>{{ catName(p.category) }}</td>
+              <td>{{ p.probability }}</td>
+              <td>{{ p.stock<0?'不限':p.stock }}</td>
+              <td>{{ p.cost_points>0?p.cost_points+'分':'-' }}</td>
+              <td><span :class="['badge', p.status]">{{ p.status==='on'?'上架':'下架' }}</span></td>
+              <td>
+                <button class="mini" @click="openEdit(p)">编辑</button>
+                <button class="mini danger" @click="del(p)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 手机端卡片列表 -->
+        <div class="prize-cards">
+          <div class="data-card" v-for="p in prizes" :key="p.id">
+            <div class="dc-head">
+              <span class="dc-title">{{ p.name }}</span>
+              <span :class="['badge', p.status]">{{ p.status==='on'?'上架':'下架' }}</span>
+            </div>
+            <div class="dc-desc" v-if="p.description">{{ p.description }}</div>
+            <div class="dc-desc" v-if="p.is_lottery_ticket" style="color:#e67e22">🎰 抽奖机会×{{ p.ticket_qty }}</div>
+            <div class="dc-grid">
+              <div><span class="dc-k">类别</span><span class="dc-v">{{ catName(p.category) }}</span></div>
+              <div><span class="dc-k">概率</span><span class="dc-v">{{ p.probability }}</span></div>
+              <div><span class="dc-k">库存</span><span class="dc-v">{{ p.stock<0?'不限':p.stock }}</span></div>
+              <div><span class="dc-k">积分</span><span class="dc-v">{{ p.cost_points>0?p.cost_points+'分':'-' }}</span></div>
+            </div>
+            <div class="dc-actions">
+              <button class="mini" @click="openEdit(p)">编辑</button>
+              <button class="mini danger" @click="del(p)">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal" v-if="editing">
+          <div class="modal-card">
+            <h3>{{ editing.id ? '编辑奖品' : '新增奖品' }}</h3>
+            <label>名称 <input v-model="editing.name" /></label>
+            <label>描述 <input v-model="editing.description" /></label>
+            <label>类别
+              <select v-model="editing.category">
+                <option value="stationery">文具</option>
+                <option value="outdoor">户外</option>
+                <option value="interest">兴趣</option>
+              </select>
+            </label>
+            <label>中奖概率(0~1) <input type="number" step="0.01" v-model="editing.probability" /></label>
+            <label>库存(-1不限) <input type="number" v-model="editing.stock" /></label>
+            <label>状态
+              <select v-model="editing.status">
+                <option value="on">上架</option>
+                <option value="off">下架</option>
+              </select>
+            </label>
+            <label>积分兑换价(0=不参与) <input type="number" v-model="editing.cost_points" /></label>
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="editing.is_lottery_ticket" />
+               设为"抽奖机会"（兑换后获得抽奖券，不扣库存，可无限次兑换）
+            </label>
+            <label v-if="editing.is_lottery_ticket">每次兑换获得抽奖券数量
+              <input type="number" v-model="editing.ticket_qty" min="1" />
+            </label>
+            <div class="modal-actions">
+              <button class="ghost" @click="editing=null">取消</button>
+              <button class="primary" @click="savePrize">保存</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 用户管理 -->
+      <section v-if="view==='users'">
+        <h2>用户管理</h2>
+        <table class="user-table">
+          <thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>连续/最长</th><th>有效打卡</th><th>积分</th><th>抽奖券</th><th>绑定码</th></tr></thead>
+          <tbody>
+            <tr v-for="u in users" :key="u.id">
+              <td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.nickname }}</td>
+              <td>{{ roleName(u.role) }}</td>
+              <td>{{ u.current_streak }}/{{ u.longest_streak }}</td>
+              <td>{{ u.effective_checkins }}</td><td><b>{{ u.points }}</b></td><td>{{ u.lottery_tickets }}</td>
+              <td>{{ u.bind_code || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 手机端卡片列表 -->
+        <div class="user-cards">
+          <div class="data-card" v-for="u in users" :key="u.id">
+            <div class="dc-head">
+              <span class="dc-title">{{ u.nickname }}</span>
+              <span class="muted">@{{ u.username }}</span>
+            </div>
+            <div class="dc-grid">
+              <div><span class="dc-k">角色</span><span class="dc-v">{{ roleName(u.role) }}</span></div>
+              <div><span class="dc-k">连续/最长</span><span class="dc-v">{{ u.current_streak }}/{{ u.longest_streak }}</span></div>
+              <div><span class="dc-k">有效打卡</span><span class="dc-v">{{ u.effective_checkins }}</span></div>
+              <div><span class="dc-k">积分</span><span class="dc-v"><b>{{ u.points }}</b></span></div>
+              <div><span class="dc-k">抽奖券</span><span class="dc-v">{{ u.lottery_tickets }}</span></div>
+              <div><span class="dc-k">绑定码</span><span class="dc-v">{{ u.bind_code || '-' }}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 打卡记录（含审核） -->
+      <section v-if="view==='checkins'">
+        <div class="bar">
+          <h2>打卡审核 <small class="muted" v-if="pendingCount>0">（待审核 <b style="color:#e67e22">{{ pendingCount }}</b> 条）</small></h2>
+          <div style="flex:1"></div>
+          <button class="mini" :class="{on: checkinFilter==='pending'}" @click="checkinFilter='pending'; loadCheckins()">待审核</button>
+          <button class="mini" :class="{on: checkinFilter==='all'}" @click="checkinFilter='all'; loadCheckins()">全部</button>
+        </div>
+        <table class="checkin-table">
+          <thead><tr>
+            <th>ID</th><th>用户</th><th>日期</th><th>时间</th><th>类型</th>
+            <th>位置</th><th>照片</th><th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody>
+            <tr v-for="c in checkins" :key="c.id" :class="'row-'+c.review_status">
+              <td>{{ c.id }}</td>
+              <td>{{ c.nickname }}<br><small class="muted">ID:{{ c.user_id }}</small></td>
+              <td>{{ c.check_date }}</td>
+              <td>{{ c.check_time }}</td>
+              <td>{{ c.check_type==='makeup'?'补卡':'正常' }}</td>
+              <td>
+                <span v-if="c.geo_distance!=null">{{ c.geo_distance.toFixed(0) }}m</span>
+                <span v-else>-</span>
+                <span :class="['badge', c.geo_flag?'danger':'ok']" style="margin-left:4px">{{ c.geo_flag?'异常':'正常' }}</span>
+              </td>
+              <td>
+                <button class="mini link-btn" @click="viewCheckinPhoto(c, checkins)" v-if="c.photo">查看</button>
+                <span class="muted" v-else>-</span>
+              </td>
+              <td>
+                <span :class="['review-badge', c.review_status]">
+                  {{ c.review_status==='approved'?'已通过':c.review_status==='rejected'?'已拒绝':'待审核' }}
+                </span>
+                <small class="muted" v-if="c.review_note" style="display:block;max-width:120px;overflow:hidden;text-overflow:ellipsis">{{ c.review_note }}</small>
+              </td>
+              <td>
+                <template v-if="c.review_status==='pending'">
+                  <button class="mini approve-btn" @click="openReview(c, 'approved')">通过</button>
+                  <button class="mini reject-btn" @click="openReview(c, 'rejected')">拒绝</button>
+                </template>
+                <span class="muted" v-else>-</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 手机端卡片列表 -->
+        <div class="checkin-cards">
+          <div class="data-card" v-for="c in checkins" :key="c.id" :class="'row-'+c.review_status">
+            <div class="dc-head">
+              <span class="dc-title">{{ c.nickname }}</span>
+              <span :class="['review-badge', c.review_status]">
+                {{ c.review_status==='approved'?'已通过':c.review_status==='rejected'?'已拒绝':'待审核' }}
+              </span>
+            </div>
+            <div class="dc-sub muted">ID:{{ c.user_id }} · {{ c.check_date }} {{ c.check_time }} · {{ c.check_type==='makeup'?'补卡':'正常' }}</div>
+            <div class="dc-line">
+              <span class="dc-k">位置</span>
+              <span class="dc-v">{{ c.geo_distance!=null ? c.geo_distance.toFixed(0)+'m' : '-' }}</span>
+              <span :class="['badge', c.geo_flag?'danger':'ok']" style="margin-left:4px">{{ c.geo_flag?'异常':'正常' }}</span>
+            </div>
+            <div class="dc-photos" v-if="c.photo">
+              <img :src="thumbUrl(c.photo)" class="checkin-thumb" @click="viewCheckinPhoto(c, checkins)" />
+            </div>
+            <div class="dc-note muted" v-if="c.review_note">备注：{{ c.review_note }}</div>
+            <div class="dc-actions" v-if="c.review_status==='pending'">
+              <button class="mini approve-btn" @click="openReview(c, 'approved')">通过</button>
+              <button class="mini reject-btn" @click="openReview(c, 'rejected')">拒绝</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="muted" v-if="!checkins.length" style="text-align:center;padding:20px">暂无打卡记录</p>
+      </section>
+
+      <!-- 兑换记录（含审核） -->
+      <section v-if="view==='redeems'">
+        <div class="bar">
+          <h2>兑换审核 <small class="muted" v-if="redeemPendingCount>0">（待核实 <b style="color:#e67e22">{{ redeemPendingCount }}</b> 条）</small></h2>
+          <div style="flex:1"></div>
+          <button class="mini" :class="{on: redeemFilter==='pending'}" @click="redeemFilter='pending'; loadRedeems()">待核实</button>
+          <button class="mini" :class="{on: redeemFilter==='fulfilled'}" @click="redeemFilter='fulfilled'; loadRedeems()">已兑现</button>
+          <button class="mini" :class="{on: redeemFilter==='rejected'}" @click="redeemFilter='rejected'; loadRedeems()">已拒绝</button>
+          <button class="mini" :class="{on: redeemFilter==='all'}" @click="redeemFilter='all'; loadRedeems()">全部</button>
+        </div>
+        
+        <!-- 统计栏 -->
+        <div class="redeem-stats" v-if="stats">
+          <div class="redeem-stat pending"><div class="v">{{ stats.redeem_pending || 0 }}</div><div class="k">待核实</div></div>
+          <div class="redeem-stat approved"><div class="v">{{ stats.redeem_approved || 0 }}</div><div class="k">已兑现</div></div>
+          <div class="redeem-stat rejected"><div class="v">{{ stats.redeem_rejected || 0 }}</div><div class="k">已拒绝</div></div>
+        </div>
+        
+        <!-- 桌面端表格 -->
+        <table class="redeem-table">
+          <thead><tr><th>ID</th><th>学生</th><th>奖品</th><th>消耗积分</th><th>兑换时间</th><th>来源</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="r in redeems" :key="r.id" :class="'row-'+r.status">
+              <td>{{ r.id }}</td>
+              <td>{{ r.nickname }}<br><small class="muted">{{ r.username }}</small></td>
+              <td>{{ r.prize_name }}</td>
+              <td>{{ r.cost_points }}</td>
+              <td>{{ r.redeemed_at }}</td>
+              <td><small v-if="r.note && r.note.includes('抽奖获得')" style="color:#e67e22">🎰 抽奖</small><small v-else-if="r.cost_points>0" style="color:#2f80ed">💰 积分兑换</small><small v-else class="muted">-</small></td>
+              <td>
+                <span :class="['review-badge', r.status==='fulfilled'?'approved':r.status==='rejected'?'rejected':'pending']">
+                  {{ r.status==='fulfilled'?'已兑现':r.status==='rejected'?'已拒绝':'待发放' }}
+                </span>
+                <small class="muted" v-if="r.review_note" style="display:block;max-width:140px;overflow:hidden;text-overflow:ellipsis">{{ r.review_note }}</small>
+                <small class="muted" v-if="r.reviewed_at" style="display:block;font-size:10px">{{ r.reviewed_at }}</small>
+              </td>
+              <td>
+                <template v-if="r.status==='pending'">
+                  <button class="mini approve-btn" @click="openRedeemReview(r, 'approved')">兑现</button>
+                  <button class="mini reject-btn" @click="openRedeemReview(r, 'rejected')">拒绝</button>
+                </template>
+                <span class="muted" v-else>-</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <!-- 移动端卡片列表 -->
+        <div class="redeem-cards">
+          <div class="redeem-card" v-for="r in redeems" :key="r.id" :class="'card-'+r.status">
+            <div class="card-header">
+              <span class="card-nickname">{{ r.nickname }}</span>
+              <span :class="['review-badge', r.status==='fulfilled'?'approved':r.status==='rejected'?'rejected':'pending']">
+                {{ r.status==='fulfilled'?'已兑现':r.status==='rejected'?'已拒绝':'待发放' }}
+              </span>
+            </div>
+            <div class="card-info">
+              <div>{{ r.prize_name }} · {{ r.cost_points }}积分</div>
+              <div class="muted">{{ r.redeemed_at }}</div>
+              <div class="muted" v-if="r.review_note">备注：{{ r.review_note }}</div>
+            </div>
+            <div class="card-action" v-if="r.status==='pending'">
+              <button class="mini approve-btn" @click="openRedeemReview(r, 'approved')">兑现</button>
+              <button class="mini reject-btn" @click="openRedeemReview(r, 'rejected')">拒绝</button>
+            </div>
+          </div>
+        </div>
+        
+        <p class="muted" v-if="!redeems.length" style="text-align:center;padding:20px">暂无兑换记录</p>
+      </section>
+
+      <!-- 闯关任务管理 -->
+      <section v-if="view==='challenges'">
+        <div class="bar">
+          <h2>🏆 闯关任务管理 <small class="muted" v-if="challengePendingCount>0">（待审核 <b style="color:#e67e22">{{ challengePendingCount }}</b> 条）</small></h2>
+          <div style="flex:1"></div>
+          <button class="primary" @click="openChallengeForm(null)">+ 新增任务</button>
+        </div>
+
+        <!-- 任务列表 -->
+        <table class="challenge-table">
+          <thead><tr><th>序号</th><th>任务名称</th><th>积分奖励</th><th>状态</th><th>打卡数</th><th>待审核</th><th>开放时间</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="t in challengeTasks" :key="t.id">
+              <td>{{ t.sort_order }}</td>
+              <td>{{ t.name }}<br><small class="muted" v-if="t.description">{{ t.description }}</small></td>
+              <td><span class="points-badge">{{ t.reward_points }}分</span></td>
+              <td>
+                <span :class="['challenge-status-badge', t.status]">
+                  {{ t.is_unlocked ? '✅ 已开放' : (t.status === 'scheduled' ? '⏰ 定时开放' : '🔒 未开放') }}
+                </span>
+              </td>
+              <td>{{ t.total_checkins }}</td>
+              <td><span class="nav-badge" v-if="t.pending_reviews > 0">{{ t.pending_reviews }}</span><span v-else class="muted">0</span></td>
+              <td><small v-if="t.unlock_at">{{ t.unlock_at }}</small><small v-else class="muted">-</small></td>
+              <td>
+                <button class="mini" @click="openChallengeForm(t)">编辑</button>
+                <button class="mini" style="color:#27ae60" v-if="!t.is_unlocked" @click="unlockTask(t)">开放</button>
+                <button class="mini" style="color:#2f80ed" @click="viewChallengeCheckins(t)">打卡</button>
+                <button class="mini danger" @click="deleteTask(t)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 手机端卡片列表 -->
+        <div class="challenge-cards">
+          <div class="data-card" v-for="t in challengeTasks" :key="t.id">
+            <div class="dc-head">
+              <span class="dc-title">#{{ t.sort_order }} {{ t.name }}</span>
+              <span :class="['challenge-status-badge', t.status]">
+                {{ t.is_unlocked ? '✅ 已开放' : (t.status === 'scheduled' ? '⏰ 定时开放' : '🔒 未开放') }}
+              </span>
+            </div>
+            <div class="dc-desc muted" v-if="t.description">{{ t.description }}</div>
+            <div class="dc-line">
+              <span class="points-badge">{{ t.reward_points }}分</span>
+              <span class="muted">打卡 {{ t.total_checkins }} 条</span>
+              <span v-if="t.pending_reviews > 0"><span class="nav-badge">{{ t.pending_reviews }}</span> 待审</span>
+              <span class="muted" v-else>待审 0</span>
+              <span class="muted" v-if="t.unlock_at">开放：{{ t.unlock_at }}</span>
+            </div>
+            <div class="dc-actions">
+              <button class="mini" @click="openChallengeForm(t)">编辑</button>
+              <button class="mini" style="color:#27ae60" v-if="!t.is_unlocked" @click="unlockTask(t)">开放</button>
+              <button class="mini" style="color:#2f80ed" @click="viewChallengeCheckins(t)">打卡</button>
+              <button class="mini danger" @click="deleteTask(t)">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="muted" v-if="!challengeTasks.length" style="text-align:center;padding:20px">暂无闯关任务，点击右上角新增</p>
+
+        <!-- 闯关打卡记录 -->
+        <div class="challenge-checkins-section" v-if="viewingCheckinsTask">
+          <div class="bar">
+            <h3>📋 「{{ viewingCheckinsTask.name }}」打卡记录</h3>
+            <div style="flex:1"></div>
+            <button class="mini" :class="{on: challengeCheckinFilter==='pending'}" @click="challengeCheckinFilter='pending'; loadChallengeCheckins(viewingCheckinsTask.id)">待审核</button>
+            <button class="mini" :class="{on: challengeCheckinFilter==='all'}" @click="challengeCheckinFilter='all'; loadChallengeCheckins(viewingCheckinsTask.id)">全部</button>
+            <button class="mini ghost" @click="viewingCheckinsTask=null">返回列表</button>
+          </div>
+          <table class="challenge-checkin-table">
+            <thead><tr><th>学生</th><th>内容</th><th>附件</th><th>提交时间</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="c in challengeCheckins" :key="c.id" :class="'row-'+c.review_status">
+                <td>{{ c.user_nickname }}</td>
+                <td>{{ c.content || '-' }}</td>
+                <td>
+                  <template v-if="c.attachments && c.attachments.length">
+                    <button class="mini link-btn" @click="viewChallengeAttachments(c)">查看({{ c.attachments.length }})</button>
+                  </template>
+                  <span class="muted" v-else>-</span>
+                </td>
+                <td><small>{{ c.created_at }}</small></td>
+                <td>
+                  <span :class="['review-badge', c.review_status]">
+                    {{ c.review_status==='approved'?'已通过':c.review_status==='rejected'?'已拒绝':'待审核' }}
+                  </span>
+                  <small class="muted" v-if="c.review_note" style="display:block">{{ c.review_note }}</small>
+                </td>
+                <td>
+                  <template v-if="c.review_status==='pending'">
+                    <button class="mini approve-btn" @click="openChallengeReview(c, 'approve')">通过</button>
+                    <button class="mini reject-btn" @click="openChallengeReview(c, 'reject')">拒绝</button>
+                  </template>
+                  <span class="muted" v-else>-</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 手机端卡片列表 -->
+          <div class="challenge-checkin-cards">
+            <div class="data-card" v-for="c in challengeCheckins" :key="c.id" :class="'row-'+c.review_status">
+              <div class="dc-head">
+                <span class="dc-title">{{ c.user_nickname }}</span>
+                <span :class="['review-badge', c.review_status]">
+                  {{ c.review_status==='approved'?'已通过':c.review_status==='rejected'?'已拒绝':'待审核' }}
+                </span>
+              </div>
+              <div class="dc-desc" v-if="c.content">{{ c.content }}</div>
+              <div class="dc-photos" v-if="c.attachments && c.attachments.length">
+                <img v-for="(url,i) in c.attachments" :key="i" :src="thumbUrl(url)" class="checkin-thumb" @click="viewChallengeAttachments(c)" />
+              </div>
+              <div class="dc-sub muted">{{ c.created_at }}</div>
+              <div class="dc-note muted" v-if="c.review_note">备注：{{ c.review_note }}</div>
+              <div class="dc-actions" v-if="c.review_status==='pending'">
+                <button class="mini approve-btn" @click="openChallengeReview(c, 'approve')">通过</button>
+                <button class="mini reject-btn" @click="openChallengeReview(c, 'reject')">拒绝</button>
+              </div>
+            </div>
+          </div>
+
+          <p class="muted" v-if="!challengeCheckins.length" style="text-align:center;padding:20px">暂无打卡记录</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" v-if="toast">{{ toast }}</div>
+
+  <!-- ==================== 闯关任务编辑弹窗 ==================== -->
+  <div class="modal" v-if="challengeEditing" @click.self="challengeEditing=null">
+    <div class="modal-card">
+      <h3>{{ challengeEditing.id ? '编辑闯关任务' : '新增闯关任务' }}</h3>
+      <label>任务名称 <input v-model="challengeEditing.name" placeholder="例如：阅读10页课外书" /></label>
+      <label>任务描述 <textarea v-model="challengeEditing.description" placeholder="详细说明任务要求..." rows="3"></textarea></label>
+      <label>排序序号 <input type="number" v-model="challengeEditing.sort_order" /></label>
+      <label>完成奖励积分 <input type="number" v-model="challengeEditing.reward_points" min="0" /></label>
+      <label>任务状态
+        <select v-model="challengeEditing.status">
+          <option value="locked">🔒 未开放</option>
+          <option value="scheduled">⏰ 定时开放</option>
+          <option value="active">✅ 已开放</option>
+        </select>
+      </label>
+      <label v-if="challengeEditing.status==='scheduled'">开放时间 <input type="datetime-local" v-model="challengeEditing.unlock_at" /></label>
+      <label>开放条件说明 <input v-model="challengeEditing.unlock_condition" placeholder="可选，如：完成前一个任务后开放" /></label>
+      <div class="modal-actions">
+        <button class="ghost" @click="challengeEditing=null">取消</button>
+        <button class="primary" @click="saveChallengeTask">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 闯关打卡审核弹窗 ==================== -->
+  <div class="modal" v-if="reviewingChallenge" @click.self="reviewingChallenge=null">
+    <div class="modal-card">
+      <h3>{{ reviewingChallenge.action==='approve' ? '✅ 通过打卡' : '❌ 拒绝打卡' }}</h3>
+      <p class="muted">学生：{{ reviewingChallenge.checkin.user_nickname }}</p>
+      <p class="muted">任务：{{ reviewingChallenge.checkin.task_name }}</p>
+      <p class="muted" v-if="reviewingChallenge.checkin.content">打卡内容：{{ reviewingChallenge.checkin.content }}</p>
+      <p class="muted">提交时间：{{ reviewingChallenge.checkin.created_at }}</p>
+      <div v-if="reviewingChallenge.checkin.attachments && reviewingChallenge.checkin.attachments.length" style="margin:8px 0">
+        <img v-for="(url, i) in reviewingChallenge.checkin.attachments" :key="i" :src="url" class="review-thumb" />
+      </div>
+      <label>备注（可选）<input v-model="reviewingChallenge.note" placeholder="审核说明..." /></label>
+      <div class="modal-actions">
+        <button class="ghost" @click="reviewingChallenge=null">取消</button>
+        <button :class="reviewingChallenge.action==='approve' ? 'primary' : 'danger-btn'" @click="submitChallengeReview">
+          {{ reviewingChallenge.action==='approve' ? '确认通过' : '确认拒绝' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 打卡审核弹窗 ==================== -->
+  <div class="modal" v-if="reviewing" @click.self="reviewing=null">
+    <div class="modal-card">
+      <h3>{{ reviewing.status==='approved'?'✅ 通过打卡':'❌ 拒绝打卡' }}</h3>
+      <p class="muted">用户：{{ reviewing.checkin.nickname }}（{{ reviewing.checkin.check_date }}）</p>
+      <p class="muted">时间：{{ reviewing.checkin.check_time }}</p>
+      <label>备注（可选）<input v-model="reviewing.note" placeholder="审核说明..." /></label>
+      <div class="modal-actions">
+        <button class="ghost" @click="reviewing=null">取消</button>
+        <button :class="reviewing.status==='approved'?'primary':'danger-btn'" @click="submitReview">
+          {{ reviewing.status==='approved'?'确认通过':'确认拒绝' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 兑换审核弹窗 ==================== -->
+  <div class="modal" v-if="reviewingRedeem" @click.self="reviewingRedeem=null">
+    <div class="modal-card">
+      <h3>{{ reviewingRedeem.status==='approved'?'✅ 确认兑现':'❌ 拒绝兑现' }}</h3>
+      <p class="muted">用户：{{ reviewingRedeem.record.nickname }}（{{ reviewingRedeem.record.username }}）</p>
+      <p class="muted">奖品：{{ reviewingRedeem.record.prize_name }}</p>
+      <p class="muted">消耗积分：{{ reviewingRedeem.record.cost_points }}</p>
+      <p class="muted">兑换时间：{{ reviewingRedeem.record.redeemed_at }}</p>
+      <p class="muted" v-if="reviewingRedeem.record.review_note">审核备注：{{ reviewingRedeem.record.review_note }}</p>
+      <p class="muted" v-if="reviewingRedeem.record.reviewed_at">审核时间：{{ reviewingRedeem.record.reviewed_at }}</p>
+      <label>备注（可选）<input v-model="reviewingRedeem.note" placeholder="审核说明..." /></label>
+      <div class="modal-actions">
+        <button class="ghost" @click="reviewingRedeem=null">取消</button>
+        <button :class="reviewingRedeem.status==='approved'?'primary':'danger-btn'" @click="submitRedeemReview">
+          {{ reviewingRedeem.status==='approved'?'确认兑现':'确认拒绝' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 图片查看器弹窗 ==================== -->
+  <div
+    class="viewer-overlay"
+    v-if="viewer.visible"
+    @click.self="closeViewer"
+    @keydown="onViewerKeydown"
+    tabindex="0"
+    ref="viewerEl"
+  >
+    <!-- 顶部工具栏 -->
+    <div class="viewer-toolbar">
+      <span class="viewer-counter">{{ viewer.index + 1 }} / {{ imageCount }}</span>
+      <span class="viewer-caption" v-if="currentImage?.caption">{{ currentImage.caption }}</span>
+      <div class="viewer-actions">
+        <button class="vbtn" @click="zoomOut" title="缩小 (-)">−</button>
+        <span class="vzoom">{{ (viewer.zoom * 100).toFixed(0) }}%</span>
+        <button class="vbtn" @click="zoomIn" title="放大 (+)">+</button>
+        <button class="vbtn" @click="rotateLeft" title="左旋">↺</button>
+        <button class="vbtn" @click="rotateRight" title="右旋 (R)">↻</button>
+        <button class="vbtn" @click="resetView" title="重置">↻︎</button>
+        <div class="v-divider"></div>
+        <button class="vbtn vbtn-upload" @click="toggleUpload" :class="{active: viewer.showUpload}" title="上传图片">📤 上传</button>
+        <button class="vbtn vbtn-close" @click="closeViewer" title="关闭 (ESC)">✕</button>
+      </div>
+    </div>
+
+    <!-- 左右翻页按钮 -->
+    <button
+      class="viewer-nav viewer-prev"
+      :class="{disabled: isFirst}"
+      @click.stop="prevImage"
+      v-show="imageCount > 1"
+      title="上一张 (←)"
+    >‹</button>
+    <button
+      class="viewer-nav viewer-next"
+      :class="{disabled: isLast}"
+      @click.stop="nextImage"
+      v-show="imageCount > 1"
+      title="下一张 (→)"
+    >›</button>
+
+    <!-- 图片展示区域（支持触摸滑动） -->
+    <div
+      class="viewer-stage"
+      @touchstart.prevent="onTouchStart"
+      @touchmove.prevent="onTouchMove"
+      @touchend="onTouchEnd"
+      @wheel.prevent="onWheel"
+    >
+      <!-- 加载指示 -->
+      <div class="viewer-loading" v-if="viewer.loading && currentSrc">
+        <div class="spinner"></div>
+        <p>加载中...</p>
+      </div>
+
+      <!-- 主图片 -->
+      <img
+        v-show="currentSrc && !viewer.loading"
+        class="viewer-img"
+        :src="currentSrc"
+        :key="viewer.index"
+        :style="{transform: 'scale('+viewer.zoom+') rotate('+viewer.rotate+'deg)'}"
+        @load="onImgLoad"
+        @error="onImgError"
+        draggable="false"
+        ref="viewerImg"
+      />
+
+      <!-- 无图占位 -->
+      <div class="viewer-empty" v-if="!currentSrc">
+        <p>暂无图片</p>
+      </div>
+    </div>
+
+    <!-- 底部缩略条（多图时显示） -->
+    <div class="viewer-thumbs" v-if="imageCount > 1">
+      <div
+        class="viewer-thumb"
+        v-for="(img, i) in viewer.images"
+        :key="i"
+        :class="{active: i === viewer.index}"
+        @click.stop="viewer.index = i; onIndexChanged()"
+      >
+        <img :src="img.thumb || img.src" :alt="'图'+(i+1)" />
+      </div>
+    </div>
+
+    <!-- 上传面板 -->
+    <div class="viewer-upload-panel" v-if="viewer.showUpload" @click.stop>
+      <div class="upload-header">
+        <h3>📤 上传图片</h3>
+        <button class="vbtn vbtn-close" @click="toggleUpload">✕</button>
+      </div>
+      <div class="upload-dropzone" @click="$refs.fileInput.click()">
+        <input ref="fileInput" type="file" multiple accept="image/*" style="display:none" @change="onUploadFiles" />
+        <div class="dropzone-icon">📁</div>
+        <p>点击选择图片或拖放至此处</p>
+        <small>支持 JPG / PNG / GIF / WEBP，可多选</small>
+      </div>
+      <!-- 已选文件列表 -->
+      <div class="upload-list" v-if="viewer.uploadList.length > 0">
+        <div class="upload-item" v-for="(item, idx) in viewer.uploadList" :key="idx">
+          <img :src="item.preview" class="upload-thumb" />
+          <div class="upload-info">
+            <span class="upload-name">{{ item.name }}</span>
+            <span class="upload-size">{{ item.size }}</span>
+          </div>
+          <button class="vbtn vbtn-close upload-remove" @click="removeUploadItem(idx)">✕</button>
+        </div>
+        <div class="upload-footer">
+          <button class="ghost" @click="clearUploadList">清空</button>
+          <button class="primary" @click="doUpload" :disabled="viewer.uploading">
+            {{ viewer.uploading ? "上传中..." : "确认上传 (" + viewer.uploadList.length + ")" }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/admin/app.js"></script>
+</body>
+</html>

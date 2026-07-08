@@ -20,8 +20,8 @@ services:
       # 数据库与上传目录重定向到持久化卷
       DB_PATH: /data/app.db
       UPLOAD_DIR: /data/uploads
-      # 安全配置（生产环境请更换为随机字符串）
-      SUMMER_SECRET: summer-prod-secret-change-me-in-production
+      # 安全配置（生产环境请更换为随机字符串，或通过 .env 文件注入）
+      SUMMER_SECRET: ${SUMMER_SECRET:-summer-local-dev-secret}
       ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
     volumes:
       - summer-data:/data

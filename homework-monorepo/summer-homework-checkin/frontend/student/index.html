@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>暑假作业打卡 · 小学三年级</title>
+  <link rel="stylesheet" href="/student.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" v-cloak>
+  <!-- 登录/注册 -->
+  <div class="auth-wrap" v-if="view==='login'">
+    <div class="auth-card">
+      <div class="logo">🌞📚</div>
+      <h1>暑假作业打卡</h1>
+      <p class="slogan">每天进步一点点，打卡赢好礼！</p>
+      <div class="tabs">
+        <span :class="{on:authMode==='login'}" @click="authMode='login'">登录</span>
+        <span :class="{on:authMode==='register'}" @click="authMode='register'">注册</span>
+      </div>
+      <div class="role-pick" v-if="authMode==='register'">
+        <button :class="{on:regRole==='student'}" @click="regRole='student'">我是学生</button>
+        <button :class="{on:regRole==='parent'}" @click="regRole='parent'">我是家长</button>
+      </div>
+      <input v-model="form.username" placeholder="用户名" />
+      <input v-model="form.nickname" placeholder="昵称（如：小明）" v-if="authMode==='register'" />
+      <input v-model="form.password" type="password" placeholder="密码" />
+      <button class="primary big" @click="authMode==='login'?login():register()">
+        {{ authMode==='login' ? '登录' : '注册并进入' }}
+      </button>
+      <p class="tip" v-if="regRole==='student' && authMode==='register'">注册后可在「我的」查看绑定码，发给家长绑定</p>
+      <p class="tip" v-if="regRole==='parent' && authMode==='register'">家长登录后绑定孩子，即可代孩子打卡、查看积分与兑换</p>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <template v-else>
+    <header class="topbar">
+      <span class="hi">Hi, {{ isParent ? '家长·' : '' }}{{ subjectName }}</span>
+      <span class="ticket">⭐ {{ points }} 积分</span>
+    </header>
+
+    <!-- 家长：孩子切换 -->
+    <div class="child-switch" v-if="isParent && children.length > 1">
+      <span>当前孩子：</span>
+      <span
+        v-for="c in children" :key="c.student_id"
+        :class="{on: c.student_id===actingChildId}"
+        @click="selectChild(c.student_id)"
+      >{{ c.nickname }}</span>
+    </div>
+    <div class="empty-tip" v-if="isParent && children.length===0">
+      <p>尚未绑定孩子。</p>
+      <p class="muted">请让孩子在「我的」中查看绑定码，再用家长账号绑定。</p>
+    </div>
+
+    <!-- 首页 -->
+    <section class="page" v-if="view==='home'">
+      <div class="hero">
+        <div class="hero-streak">
+          <div class="num">{{ streak.current_streak }}</div>
+          <div class="lbl">连续打卡(天)</div>
+        </div>
+        <div class="hero-sub">
+          <div>🔥 最长 {{ streak.longest_streak }} 天</div>
+          <div>✅ 累计 {{ streak.effective_checkins }} 次</div>
+          <div>⭐ 积分 {{ points }}</div>
+          <div>🎯 再 {{ 7 - (streak.current_streak % 7 || 7) }} 天解锁抽奖</div>
+        </div>
+      </div>
+
+      <div class="card center" v-if="today.today_checked">
+        <div class="done">✅ 今天已完成打卡！</div>
+        <p class="muted">已得积分在「商城」兑换好礼</p>
+        <div class="review-info" v-if="today.pending_count > 0">
+          <p class="review-pending-text">📝 今日有 {{ today.pending_count }} 条打卡待审核</p>
+        </div>
+      </div>
+      <div class="card center" v-else-if="today.pending_count > 0">
+        <div class="done pending">📝 今天已提交打卡，等待审核</div>
+        <p class="muted">审核通过后积分将自动到账</p>
+        <button class="primary big" @click="go('checkin')">📸 继续打卡</button>
+      </div>
+      <div class="card center" v-else>
+        <p class="muted">今天还没打卡，快去记录作业吧！</p>
+        <button class="primary big" @click="go('checkin')">📸 去打卡</button>
+      </div>
+
+      <div class="quick">
+        <div class="q" @click="go('mall')"><div class="qi">🛍️</div>积分商城</div>
+        <div class="q" @click="go('report')"><div class="qi">📊</div>报告</div>
+        <div class="q" @click="go('me')"><div class="qi">👤</div>我的</div>
+      </div>
+    </section>
+
+    <!-- 打卡 -->
+    <section class="page" v-if="view==='checkin'">
+      <div class="card">
+        <h2>📸 {{ isParent ? '代孩子打卡' : '作业打卡' }}</h2>
+        <div class="steps">步骤 1/3：上传作业现场照片</div>
+        <label class="uploader" :class="{filled:photoData}">
+          <input type="file" accept="image/*" capture="environment" @change="onPhoto" />
+          <img v-if="photoData" :src="photoData" class="preview" />
+          <div v-else class="ph">点击拍摄 / 选择照片</div>
+        </label>
+
+        <div class="steps" v-if="photoData">步骤 2/3：补卡选项（可选）</div>
+        <div class="switch-row" v-if="photoData">
+          <span>这是补卡（补过去的某天）</span>
+          <input type="checkbox" v-model="isMakeup" />
+        </div>
+        <div v-if="isMakeup && photoData" class="mk">
+          <input v-model="makeupDate" type="date" placeholder="补卡日期" />
+          <input v-model="makeupReason" placeholder="补卡原因（可选）" />
+          <label class="uploader small" :class="{filled:proofData}">
+            <input type="file" accept="image/*" @change="onProof" />
+            <span v-if="!proofData">上传补充凭证</span>
+            <img v-else :src="proofData" class="preview sm" />
+          </label>
+          <p class="warn" v-if="today.can_makeup_this_month<=0">本月补卡次数已用完</p>
+          <p class="muted">本月剩余补卡次数：{{ today.can_makeup_this_month }}</p>
+        </div>
+
+        <div class="steps" v-if="photoData">步骤 3/3：获取位置并提交</div>
+        <button class="ghost" v-if="photoData" @click="getLocation">
+          {{ locText }}
+        </button>
+        <button class="primary big" v-if="photoData" :disabled="submitting" @click="submitCheckin">
+          {{ isMakeup ? '提交补卡（+5 积分）' : (isParent ? '代孩子完成打卡（+10 积分）' : '完成打卡（+10 积分）') }}
+        </button>
+      </div>
+    </section>
+
+    <!-- 积分商城 -->
+    <section class="page" v-if="view==='mall'">
+      <div class="card center points-card">
+        <div class="big-points">⭐ {{ mall.points }}</div>
+        <p class="muted">我的积分（打卡获得，可兑换奖品）</p>
+      </div>
+
+      <!-- 可兑换奖品 -->
+      <div class="card">
+        <h3>🛍️ 积分兑换</h3>
+        <div class="mall-prizes">
+          <div class="mprize" v-for="p in mall.prizes" :key="p.id">
+            <span class="tag" :class="p.category">{{ catName(p.category) }}</span>
+            <span v-if="p.is_lottery_ticket" class="tag lottery">🎰 抽奖券×{{ p.ticket_qty }}</span>
+            <b class="mp-name">{{ p.name }}</b>
+            <small class="mp-desc">{{ p.description }}</small>
+            <div class="mp-foot">
+              <span class="mp-cost">⭐ {{ p.cost_points }}</span>
+              <span class="mp-stock" v-if="!p.is_lottery_ticket">{{ p.stock>=0 ? '剩 '+p.stock : '不限量' }}</span>
+              <span class="mp-stock" v-else>可反复兑换</span>
+            </div>
+            <button class="primary sm" :disabled="!canRedeem(p)" @click="doRedeem(p)">
+              {{ p.stock===0 && !p.is_lottery_ticket ? '已兑完' : (points < p.cost_points ? '积分不足' : '兑换') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 我的兑换 + 替换 -->
+      <div class="card" v-if="mall.redemptions.length">
+        <h3>📦 我的兑换</h3>
+        <div class="rec" v-for="r in mall.redemptions" :key="r.id">
+          <span>🎁 {{ r.prize_name }} <small class="muted">(-{{ r.cost_points }}分)</small></span>
+          <span class="rec-act">
+            <small class="muted">{{ fmtDate(r.redeemed_at) }}</small>
+            <button class="mini" v-if="r.status!=='replaced'" @click="openReplace(r)">替换</button>
+            <span class="replaced-tag" v-else>已替换</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- 抽奖（与积分并存） -->
+      <div class="card center">
+        <div class="big-ticket">🎫 {{ mall.lottery_tickets }}</div>
+        <p class="muted">可用抽奖资格（连续7天打卡解锁，永久累积）</p>
+        <button class="primary big" :disabled="mall.lottery_tickets<=0 || drawing" @click="draw">
+          {{ drawing ? '抽奖中…' : '🎰 抽一次' }}
+        </button>
+        <div class="result" v-if="drawResult">
+          <div :class="drawResult.is_win?'win':'lose'">
+            {{ drawResult.is_win ? '🎉 '+drawResult.prize_name : '😊 '+drawResult.message }}
+          </div>
+        </div>
+      </div>
+      <div class="card" v-if="mall.lottery_records.length">
+        <h3>📜 抽奖记录</h3>
+        <div class="rec" v-for="r in mall.lottery_records" :key="r.id">
+          <span>{{ r.is_win ? '🎁 '+r.prize_name : '未中奖' }}</span>
+          <small>{{ fmt(r.drawn_at) }}</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- 我的 -->
+    <section class="page" v-if="view==='me'">
+      <div class="card face-card" v-if="user.role==='student'">
+        <h3>😊 人脸打卡验证</h3>
+        <p class="muted" v-if="!faceEnrolled">尚未采集人脸底图。采集后，每次打卡将自动比对是否为本人，有效防止别人代打卡。</p>
+        <p v-else>✅ 已采集人脸底图，打卡时将自动比对是否为本人。</p>
+        <img v-if="faceIdUrl" :src="faceIdUrl" class="face-id" alt="人脸底图" />
+        <label class="uploader small" :class="{filled:faceData}" v-if="!faceEnrolled">
+          <input type="file" accept="image/*" capture="user" @change="onFaceFile" />
+          <img v-if="faceData" :src="faceData" class="preview sm" />
+          <span v-else>🤳 拍摄 / 选择正脸照</span>
+        </label>
+        <button class="primary" v-if="!faceEnrolled" :disabled="faceBusy" @click="enrollFace">采集人脸底图</button>
+        <button class="ghost" v-else :disabled="faceBusy" @click="unenrollFace">撤销人脸底图</button>
+      </div>
+      <div class="card">
+        <h3>👤 账号信息</h3>
+        <p>昵称：{{ user.nickname }}</p>
+        <p>身份：{{ user.role==='student'?'学生':'家长' }}</p>
+        <p v-if="user.role==='student'">绑定码：<b>{{ user.bind_code }}</b>（发给家长绑定）</p>
+        <p>⭐ 积分：{{ points }}</p>
+        <p>连续打卡：{{ streak.current_streak }} 天 ｜ 抽奖券：{{ streak.lottery_tickets }}</p>
+        <button class="ghost" @click="openReport">📊 查看 / 下载学习报告</button>
+      </div>
+      <div class="card" v-if="!isParent">
+        <h3>📜 打卡记录</h3>
+        <div class="rec" v-for="c in history" :key="c.id">
+          <span>{{ c.check_type==='makeup'?'🔁补卡':'✅打卡' }} {{ c.check_date }}</span>
+          <span class="review-tag" :class="'review-' + c.review_status">
+            {{ c.review_status === 'approved' ? '已审核' : c.review_status === 'rejected' ? '未通过' : '待审核' }}
+          </span>
+          <small>{{ fmt(c.check_time) }}</small>
+        </div>
+        <p class="muted" v-if="!history.length">还没有打卡记录</p>
+      </div>
+      <button class="ghost" @click="logout">退出登录</button>
+    </section>
+
+    <!-- 闯关任务 -->
+    <section class="page" v-if="view==='challenge'">
+      <div class="card">
+        <h2>🏆 闯关任务</h2>
+        <p class="muted" v-if="!challengeTasks.length">暂无闯关任务</p>
+        <div class="task-list" v-if="challengeTasks.length">
+          <div class="task-item" v-for="t in challengeTasks" :key="t.id" @click="openTaskDetail(t)">
+            <div class="task-header">
+              <span class="task-name">{{ t.name }}</span>
+              <span class="task-points">+{{ t.reward_points }}分</span>
+            </div>
+            <div class="task-status">
+              <span :class="['task-badge', t.status]">
+                {{ t.status === 'active' ? '✅ 已开放' : (t.status === 'scheduled' ? '⏰ 定时开放' : '🔒 未开放') }}
+              </span>
+              <span :class="['user-status-badge', t.user_status]" v-if="t.user_status">
+                {{ t.user_status === 'completed' ? '✅ 已完成' : (t.user_status === 'reviewing' ? '⏳ 审核中' : (t.user_status === 'rejected' ? '❌ 需重做' : '待打卡')) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" v-if="myChallengeCheckins.length">
+        <h3>📋 我的闯关打卡记录</h3>
+        <div class="rec" v-for="c in myChallengeCheckins" :key="c.id">
+          <span>🏆 {{ c.task_name }}</span>
+          <span class="review-tag" :class="'review-' + c.review_status">
+            {{ c.review_status === 'approved' ? '已通过' : (c.review_status === 'rejected' ? '未通过' : '审核中') }}
+          </span>
+          <small>{{ fmtDate(c.created_at) }}</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- 任务详情弹窗 -->
+    <div class="modal" v-if="selectedTask">
+      <div class="modal-card">
+        <h3>{{ selectedTask.name }}</h3>
+        <div class="task-detail">
+          <p v-if="selectedTask.description">{{ selectedTask.description }}</p>
+          <p class="muted">奖励积分：<b>{{ selectedTask.reward_points }}</b></p>
+          <p class="muted" v-if="selectedTask.unlock_at">开放时间：{{ fmtDate(selectedTask.unlock_at) }}</p>
+        </div>
+
+        <div v-if="selectedTask.status !== 'active'" class="task-locked">
+          <p>🔒 任务尚未开放</p>
+        </div>
+
+        <div v-else-if="selectedTask.user_status === 'completed'" class="task-completed">
+          <p>✅ 你已完成此任务</p>
+        </div>
+
+        <div v-else-if="selectedTask.user_status === 'reviewing'" class="task-reviewing">
+          <p>⏳ 打卡已提交，等待审核</p>
+        </div>
+
+        <div v-else>
+          <label>打卡内容（文字说明）</label>
+          <textarea v-model="challengeCheckinContent" placeholder="描述你完成的任务内容..." rows="3"></textarea>
+
+          <label class="uploader" :class="{filled:challengePhotoData}">
+            <input type="file" accept="image/*" capture="environment" @change="onChallengePhoto" />
+            <img v-if="challengePhotoData" :src="challengePhotoData" class="preview" />
+            <div v-else class="ph">📷 点击上传完成照片</div>
+          </label>
+
+          <div class="modal-actions">
+            <button class="ghost" @click="selectedTask=null">取消</button>
+            <button class="primary" :disabled="challengeSubmitting" @click="submitChallengeCheckin">
+              {{ challengeSubmitting ? '提交中...' : '提交打卡' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部导航 -->
+    <nav class="tabbar">
+      <div :class="{on:view==='home'}" @click="go('home')">🏠<span>首页</span></div>
+      <div :class="{on:view==='checkin'}" @click="go('checkin')">📸<span>打卡</span></div>
+      <div :class="{on:view==='challenge'}" @click="go('challenge')">🏆<span>闯关</span></div>
+      <div :class="{on:view==='mall'}" @click="go('mall')">🛍️<span>商城</span></div>
+      <div :class="{on:view==='me'}" @click="go('me')">👤<span>我的</span></div>
+    </nav>
+  </template>
+
+  <!-- 替换奖品弹窗 -->
+  <div class="modal" v-if="replaceTarget">
+    <div class="modal-card">
+      <h3>🔄 替换奖品</h3>
+      <p class="muted">将「{{ replaceTarget.prize_name }}」替换为：</p>
+      <div class="replace-list">
+        <div class="replace-item" v-for="p in mall.prizes" :key="p.id" @click="confirmReplace(p)">
+          <span class="tag" :class="p.category">{{ catName(p.category) }}</span>
+          <b>{{ p.name }}</b>
+          <span class="mp-cost">⭐ {{ p.cost_points }}</span>
+          <small v-if="p.stock===0" class="sold">已兑完</small>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost" @click="cancelReplace">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" v-if="toast">{{ toast }}</div>
+</div>
+
+<!-- 替换弹窗依赖全局样式 .modal/.modal-card，定义在 student.css -->
+<script src="/app.js"></script>
+</body>
+</html>

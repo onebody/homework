@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>打卡积分兑换系统</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">📚 打卡积分兑换</div>
+      <div class="user-switch">
+        <label for="userSelect">当前用户</label>
+        <select id="userSelect"></select>
+      </div>
+    </header>
+
+    <section class="cards">
+      <div class="card balance-card">
+        <div class="label">当前积分</div>
+        <div class="value" id="balance">0</div>
+        <div class="sub">累计获得 <b id="earned">0</b> · 累计兑换 <b id="spent">0</b></div>
+      </div>
+      <div class="card ticket-card">
+        <div class="label">我的抽奖券</div>
+        <div class="value"><span id="tickets">0</span> <span class="unit">张</span></div>
+        <div class="sub">
+          <span class="status-pill" id="lotteryStatus">未解锁</span>
+          <span class="muted">· <b id="pointsPerTicket">50</b> 分 / 张</span>
+        </div>
+      </div>
+      <div class="card streak-card">
+        <div class="label">连续打卡</div>
+        <div class="value"><span id="streak">0</span> 天</div>
+        <button id="checkinBtn" class="btn primary">今日打卡 +10</button>
+        <div class="hint" id="checkinHint"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>🎫 积分兑换抽奖券</h2>
+      <div class="convert-box">
+        <div class="convert-rate" id="convertRate">每 50 积分可兑换 1 张抽奖券</div>
+        <div class="convert-row">
+          <label for="convertQty">兑换数量</label>
+          <input id="convertQty" type="number" min="1" value="1" />
+          <span class="muted">张</span>
+          <button id="convertBtn" class="btn primary">立即兑换</button>
+        </div>
+        <div class="hint" id="convertHint"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>🎰 幸运抽奖</h2>
+      <div class="wheel-wrap">
+        <div class="wheel-container">
+          <!-- 固定指针（12 点方向） -->
+          <div class="pointer">▼</div>
+          <!-- 转盘 Canvas -->
+          <canvas id="wheelCanvas" width="320" height="320"></canvas>
+        </div>
+        <div class="wheel-controls">
+          <div class="lottery-state" id="lotteryState">获取抽奖券即可参与抽奖</div>
+          <button id="drawBtn" class="btn draw" disabled>抽奖（消耗 1 张券）</button>
+          <div class="hint" id="drawHint">可用积分兑换抽奖券后解锁抽奖功能</div>
+        </div>
+      </div>
+      <!-- 中奖结果弹窗 -->
+      <div id="resultModal" class="result-modal hidden">
+        <div class="result-content">
+          <div class="result-icon" id="resultIcon">🎁</div>
+          <div class="result-title" id="resultTitle">中奖啦！</div>
+          <div class="result-prize" id="resultPrize"></div>
+          <button class="btn primary" id="resultClose">知道了</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>🎁 奖品兑换</h2>
+      <div id="prizeList" class="prize-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>📜 我的兑换记录</h2>
+      <div id="redemptionList" class="record-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>🎟️ 抽奖券流水</h2>
+      <div id="ticketLedgerList" class="record-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>🏆 我的抽奖记录</h2>
+      <div id="drawList" class="record-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>🧾 积分流水</h2>
+      <div id="ledgerList" class="record-list"></div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

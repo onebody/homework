@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.db
+*.db-wal
+*.db-shm
+uploads/
+venv/
+.venv/
+.env
+.secret_key
+README.md
+test_review.py
+CHALLENGE_TASK_SUMMARY.md

@@ -1,0 +1,13 @@
+# 精简依赖（用于 Docker 部署）
+# 核心功能（打卡 / 积分 / 闯关 / 审核 / 商城）所需依赖。
+# 注意：人脸识别依赖 insightface / onnxruntime / opencv-python-headless 为「懒加载」，
+# 仅在调用 /api/face 接口时才导入，因此本清单不含它们也能正常启动并运行全部核心功能。
+# 若需启用 Docker 内的人脸识别，请将 backend/requirements.txt 复制为此文件后构建镜像
+# （镜像会显著增大，且首次调用需联网下载 buffalo_l 模型）。
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+SQLAlchemy==2.0.35
+pydantic==2.9.2
+numpy==1.26.4
+pillow==10.4.0

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.env
+venv/
+ENV/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# Uploads (运行时生成)
+**/uploads/*
+!**/uploads/.gitkeep
+
+# Logs
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

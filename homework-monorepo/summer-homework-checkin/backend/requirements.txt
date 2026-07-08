@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+SQLAlchemy>=2.0
+# 人脸识别（1:1 本人比对）
+insightface>=0.7
+onnxruntime>=1.16
+opencv-python-headless>=4.9
+numpy>=1.24
+pillow>=10.0

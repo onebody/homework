@@ -1,1 +1,11 @@
 snake-game/
+
+# 安全：不提交密钥文件和数据库
+.secret_key
+*.db
+*.db-wal
+*.db-shm
+.env
+uploads/
+__pycache__/
+*.pyc

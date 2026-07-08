@@ -1,0 +1,211 @@
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --ink: #1f2a44;
+  --muted: #8a93a6;
+  --primary: #3b6ef5;
+  --primary-d: #2f59c9;
+  --green: #1faa6b;
+  --red: #e0533d;
+  --line: #e8ecf3;
+  --shadow: 0 6px 20px rgba(31, 42, 68, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+#app {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 16px;
+}
+.brand { font-size: 20px; font-weight: 700; }
+.user-switch { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.user-switch select {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; font-size: 14px; color: var(--ink);
+}
+
+.cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.card {
+  background: var(--card); border-radius: 16px; padding: 18px;
+  box-shadow: var(--shadow);
+}
+.card .label { font-size: 13px; color: var(--muted); }
+.card .value { font-size: 34px; font-weight: 800; margin: 4px 0; }
+.card .value .unit { font-size: 16px; font-weight: 600; color: var(--muted); }
+.balance-card .value { color: var(--primary); }
+.ticket-card .value { color: var(--green); }
+.streak-card .value { color: var(--green); }
+.card .sub { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.card .sub b { color: var(--ink); }
+
+.status-pill {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 700;
+}
+.status-pill.unlocked { background: #e6f7ef; color: var(--green); }
+.status-pill.locked { background: #f0f1f5; color: var(--muted); }
+
+
+.btn {
+  border: none; border-radius: 10px; padding: 10px 16px; font-size: 14px;
+  cursor: pointer; background: #eef1f7; color: var(--ink); transition: .15s;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--primary); color: #fff; width: 100%; margin-top: 10px; }
+.btn.primary:hover:not(:disabled) { background: var(--primary-d); }
+.hint { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+
+.convert-box { display: flex; flex-direction: column; gap: 12px; }
+.convert-rate { font-size: 14px; color: var(--ink); font-weight: 600; }
+.convert-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.convert-row label { font-size: 14px; color: var(--muted); }
+.convert-row input[type="number"] {
+  width: 88px; padding: 9px 10px; border: 1px solid var(--line);
+  border-radius: 10px; font-size: 15px; color: var(--ink);
+}
+.btn.primary { background: var(--primary); color: #fff; padding: 10px 18px; width: auto; margin-top: 0; }
+.btn.primary:hover:not(:disabled) { background: var(--primary-d); }
+
+/* ===== 转盘抽奖 ===== */
+.wheel-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.wheel-container {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  flex-shrink: 0;
+}
+#wheelCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 6px #fff,
+    0 0 0 8px var(--line),
+    0 10px 30px rgba(31, 42, 68, 0.15);
+  transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+}
+#wheelCanvas.spinning {
+  transition: transform 5s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+}
+.pointer {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  font-size: 28px;
+  color: var(--red);
+  filter: drop-shadow(0 2px 4px rgba(224, 83, 61, 0.5));
+  line-height: 1;
+  pointer-events: none;
+}
+.wheel-controls {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 中奖结果弹窗 */
+.result-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 1; transition: opacity .3s;
+}
+.result-modal.hidden { opacity: 0; pointer-events: none; }
+.result-content {
+  background: #fff; border-radius: 20px; padding: 36px 28px 28px;
+  text-align: center; min-width: 260px;
+  box-shadow: 0 20px 60px rgba(31,42,68,.25);
+  animation: popIn .35s ease-out;
+}
+@keyframes popIn {
+  from { transform: scale(.7); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.result-icon { font-size: 56px; margin-bottom: 10px; }
+.result-title { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+.result-prize { font-size: 16px; color: var(--muted); margin-bottom: 20px; }
+.result-content .btn.primary { min-width: 140px; }
+
+.lottery-box { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.lottery-state {
+  font-size: 14px; font-weight: 600; padding: 8px 14px; border-radius: 10px;
+  background: #f0f1f5; color: var(--muted);
+}
+.lottery-state.unlocked { background: #fff4e0; color: #c8821a; }
+.btn.draw {
+  background: linear-gradient(135deg, #ff8a3d, #ff5e7e); color: #fff;
+  font-size: 16px; font-weight: 700; padding: 14px 28px; border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(255, 94, 126, 0.3);
+}
+.btn.draw:hover:not(:disabled) { filter: brightness(1.05); }
+.btn.draw:disabled { background: #e6e9f0; color: var(--muted); box-shadow: none; }
+
+
+.panel {
+  background: var(--card); border-radius: 16px; padding: 18px;
+  box-shadow: var(--shadow); margin-top: 14px;
+}
+.panel h2 { font-size: 16px; margin: 0 0 14px; }
+
+.prize-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.prize {
+  border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.prize.disabled { opacity: .65; }
+.prize-name { font-weight: 700; font-size: 15px; }
+.prize-desc { font-size: 12px; color: var(--muted); min-height: 32px; }
+.prize-meta { display: flex; justify-content: space-between; font-size: 13px; }
+.prize-meta .cost { color: var(--primary); font-weight: 700; }
+.prize-meta .stock { color: var(--muted); }
+.prize .btn { margin-top: auto; }
+
+.record-list { display: flex; flex-direction: column; gap: 8px; }
+.row {
+  display: flex; align-items: center; gap: 10px; font-size: 14px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+}
+.row .muted { color: var(--muted); }
+.row .tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+.row .tag.earn { background: #e6f7ef; color: var(--green); }
+.row .tag.spend { background: #fdecea; color: var(--red); }
+.row .grow { flex: 1; }
+.empty { color: var(--muted); font-size: 14px; padding: 10px 2px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%) translateY(20px);
+  background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px;
+  font-size: 14px; opacity: 0; pointer-events: none; transition: .25s;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { background: var(--red); }
+
+@media (max-width: 560px) {
+  .cards { grid-template-columns: 1fr; }
+}

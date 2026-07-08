@@ -1,0 +1,201 @@
+:root{
+  --blue:#2f80ed; --blue-l:#eaf3ff; --green:#27ae60; --orange:#f2994a;
+  --bg:#f3faff; --ink:#2b3a4a; --muted:#7a8aa0; --card:#fff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[v-cloak]{display:none}
+body{margin:0;font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink)}
+#app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:72px}
+
+/* 登录 */
+.auth-wrap{height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#bfe0ff,#e9f6ff)}
+.auth-card{width:86%;max-width:360px;background:#fff;border-radius:24px;padding:28px 22px;text-align:center;box-shadow:0 12px 30px rgba(80,150,220,.25)}
+.logo{font-size:46px}
+.auth-card h1{margin:6px 0;color:var(--blue);font-size:22px}
+.slogan{color:var(--muted);margin:0 0 16px;font-size:13px}
+.tabs{display:flex;justify-content:center;gap:18px;margin-bottom:14px}
+.tabs span{padding:6px 4px;color:var(--muted);font-weight:600;border-bottom:3px solid transparent}
+.tabs span.on{color:var(--blue);border-color:var(--blue)}
+.role-pick{display:flex;gap:10px;margin-bottom:14px}
+.role-pick button{flex:1;padding:10px;border:2px solid #e3edf7;background:#fff;border-radius:14px;color:var(--muted);font-weight:600}
+.role-pick button.on{border-color:var(--blue);color:var(--blue);background:var(--blue-l)}
+
+input{width:100%;padding:13px 14px;margin-bottom:12px;border:2px solid #e3edf7;border-radius:14px;font-size:15px;outline:none}
+input:focus{border-color:var(--blue)}
+
+button{font-family:inherit;cursor:pointer;border:none}
+.primary{background:var(--blue);color:#fff;padding:12px 16px;border-radius:14px;font-size:15px;font-weight:600}
+.primary.big{width:100%;padding:15px;font-size:17px;margin-top:6px}
+.primary:disabled{opacity:.5}
+.ghost{background:#fff;color:var(--blue);border:2px solid var(--blue);padding:12px 16px;border-radius:14px;width:100%;font-weight:600}
+.tip{font-size:12px;color:var(--muted);margin-top:10px}
+
+/* 顶栏 */
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:var(--blue);color:#fff;position:sticky;top:0;z-index:5}
+.topbar .hi{font-weight:700}
+.topbar .ticket{background:rgba(255,255,255,.22);padding:4px 10px;border-radius:20px;font-size:13px}
+
+.page{padding:14px}
+.card{background:var(--card);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 4px 14px rgba(80,150,220,.08)}
+.card.center{text-align:center}
+.card h2{margin:0 0 10px;color:var(--blue);font-size:18px}
+.card h3{margin:0 0 10px;font-size:16px}
+.muted{color:var(--muted);font-size:13px}
+.warn{color:#e74c3c;font-size:13px}
+
+.hero{background:linear-gradient(135deg,#7eb6ff,#2f80ed);border-radius:20px;padding:20px;color:#fff;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.hero-streak .num{font-size:42px;font-weight:800;line-height:1}
+.hero-streak .lbl{font-size:13px;opacity:.9}
+.hero-sub{font-size:13px;line-height:1.9;text-align:right}
+
+.quick{display:flex;gap:10px;margin-top:6px}
+.quick .q{flex:1;background:#fff;border-radius:16px;padding:14px 0;text-align:center;box-shadow:0 4px 14px rgba(80,150,220,.08);font-size:13px;font-weight:600}
+.quick .qi{font-size:26px;margin-bottom:4px}
+
+.steps{font-size:13px;color:var(--blue);font-weight:600;margin:12px 0 8px}
+.uploader{display:block;border:2px dashed #bcd6f5;border-radius:16px;padding:18px;text-align:center;color:var(--muted);position:relative;overflow:hidden}
+.uploader.filled{border-style:solid;border-color:var(--blue)}
+.uploader input{position:absolute;inset:0;opacity:0;width:100%;height:100%;margin:0}
+.preview{width:100%;max-height:240px;object-fit:contain;border-radius:12px}
+.preview.sm{max-height:120px}
+.uploader.small{padding:12px;font-size:13px}
+.switch-row{display:flex;justify-content:space-between;align-items:center;background:var(--blue-l);padding:10px 14px;border-radius:12px;margin:8px 0;font-size:14px}
+.switch-row input{width:auto;margin:0}
+.mk input{width:100%;margin-bottom:10px}
+.done{font-size:18px;font-weight:700;color:var(--green);margin-bottom:6px}
+.face-id{width:96px;height:96px;object-fit:cover;border-radius:14px;border:3px solid var(--blue);margin:6px 0 10px}
+.face-card .muted{margin-bottom:10px}
+
+.big-ticket{font-size:48px;font-weight:800;color:var(--orange)}
+.result{margin-top:14px;font-size:16px;font-weight:700}
+.result .win{color:var(--green)}
+.result .lose{color:var(--muted)}
+.prizes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.prize{background:var(--blue-l);border-radius:12px;padding:10px;font-size:13px}
+.prize .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;margin-right:4px}
+.tag.stationery{background:#2f80ed}
+.tag.outdoor{background:#27ae60}
+.tag.interest{background:#f2994a}
+.prize b{display:block;margin:4px 0}
+.prize small{color:var(--muted)}
+.rec{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f4f9;font-size:14px}
+.rec small{color:var(--muted)}
+.review-tag{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.review-approved{background:#e8f5e9;color:#27ae60}
+.review-pending{background:#fff3e0;color:#f2994a}
+.review-rejected{background:#ffebee;color:#e74c3c}
+.rec-act{display:flex;align-items:center;gap:8px}
+.replaced-tag{font-size:12px;color:var(--muted);background:#f0f4f9;padding:2px 8px;border-radius:10px}
+
+/* 双角色：孩子切换 */
+.child-switch{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fff;font-size:13px;flex-wrap:wrap;border-bottom:1px solid #eef2f7}
+.child-switch span.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.child-switch span{cursor:pointer;padding:4px 12px;border:1px solid #dce6f1;border-radius:16px;color:var(--muted)}
+.empty-tip{padding:30px 18px;text-align:center}
+.empty-tip p{margin:6px 0}
+
+/* 积分商城 */
+.points-card{background:linear-gradient(135deg,#ffe6a8,#ffd06b);color:#7a5b13}
+.points-card .big-points{font-size:44px;font-weight:800}
+.big-points{color:#7a5b13}
+.mall-prizes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.mprize{background:var(--blue-l);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.mprize .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;align-self:flex-start}
+.mprize .tag.lottery{background:#e67e22}
+.mprize .mp-name{font-size:14px}
+.mprize .mp-desc{color:var(--muted);font-size:11px;line-height:1.3}
+.mprize .mp-foot{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-top:2px}
+.mp-cost{color:#e08a00;font-weight:700;font-size:14px}
+.mp-stock{color:var(--muted)}
+.mprize .primary.sm{margin-top:6px;padding:8px;font-size:13px;border-radius:10px}
+.primary.sm{width:100%}
+
+/* 替换弹窗 */
+.replace-list{max-height:46vh;overflow:auto;margin:8px 0}
+.replace-item{display:flex;align-items:center;gap:8px;padding:10px;background:var(--blue-l);border-radius:12px;margin-bottom:8px;cursor:pointer}
+.replace-item:active{transform:scale(.98)}
+.replace-item b{flex:1;font-size:14px}
+.replace-item .sold{color:#e74c3c}
+.mini{background:#eaf3ff;color:var(--blue);padding:5px 10px;border-radius:7px;font-size:12px;margin-right:4px}
+
+/* 通用模态（替换等） */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:20}
+.modal-card{background:#fff;border-radius:14px;padding:22px;width:88%;max-width:360px;max-height:88vh;overflow:auto}
+.modal-card h3{margin:0 0 14px}
+.modal-actions{display:flex;gap:10px;margin-top:8px}
+.modal-actions .primary,.modal-actions .ghost{flex:1}
+
+.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;display:flex;background:#fff;border-top:1px solid #eef2f7}
+.tabbar div{flex:1;text-align:center;padding:8px 0;font-size:11px;color:var(--muted);cursor:pointer}
+.tabbar div.on{color:var(--blue);font-weight:700}
+
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:rgba(43,58,74,.92);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;z-index:20}
+
+/* ==================== 闯关任务 ==================== */
+.task-list{margin-top:14px}
+.task-item{
+  background:var(--blue-l);
+  border-radius:14px;
+  padding:14px;
+  margin-bottom:10px;
+  cursor:pointer;
+  transition:transform .15s, box-shadow .15s;
+}
+.task-item:active{transform:scale(.98);box-shadow:0 2px 8px rgba(80,150,220,.15)}
+.task-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.task-name{font-size:15px;font-weight:600;color:var(--ink)}
+.task-points{
+  background:linear-gradient(135deg,#ffe6a8,#ffd06b);
+  color:#7a5b13;
+  padding:3px 10px;
+  border-radius:12px;
+  font-size:12px;
+  font-weight:700;
+}
+.task-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.task-badge{
+  font-size:11px;
+  padding:2px 8px;
+  border-radius:10px;
+  font-weight:600;
+}
+.task-badge.active{background:#e8f5e9;color:#27ae60}
+.task-badge.locked{background:#f0f0f0;color:#999}
+.task-badge.scheduled{background:#fff3e0;color:#f2994a}
+.user-status-badge{
+  font-size:11px;
+  padding:2px 8px;
+  border-radius:10px;
+  font-weight:600;
+}
+.user-status-badge.completed{background:#e8f5e9;color:#27ae60}
+.user-status-badge.reviewing{background:#fff3e0;color:#f2994a}
+.user-status-badge.rejected{background:#ffebee;color:#e74c3c}
+.user-status-badge.pending{background:var(--blue-l);color:var(--blue)}
+
+.task-detail{margin:12px 0;font-size:14px;line-height:1.6}
+.task-detail p{margin:6px 0}
+.task-locked,.task-completed,.task-reviewing{
+  background:var(--blue-l);
+  border-radius:12px;
+  padding:16px;
+  text-align:center;
+  margin:12px 0;
+  font-size:15px;
+  font-weight:600;
+  color:var(--blue);
+}
+.task-locked{color:#999;background:#f0f0f0}
+.task-reviewing{color:#f2994a;background:#fff3e0}
+
+.task-detail textarea{
+  width:100%;
+  padding:10px;
+  border:2px solid #e3edf7;
+  border-radius:12px;
+  font-size:14px;
+  font-family:inherit;
+  resize:vertical;
+  margin-bottom:10px;
+}
+.task-detail textarea:focus{border-color:var(--blue)}
