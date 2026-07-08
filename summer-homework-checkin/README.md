@@ -2,6 +2,8 @@
 
 面向三年级小学生的「暑假日常作业学习打卡」全周期管理系统。采用**前后端分离架构**，技术栈 **Python + FastAPI + Vue**，学生端以 **H5** 形式适配手机/平板，后台管理通过**独立外部页面**承载。
 
+💡 **最新版本 v0.9** — 新增密码修改、家长端解绑孩子、全局回车提交等功能，详见[版本记录](#九版本记录)。
+
 ---
 
 ## 一、功能与需求对应
@@ -17,6 +19,10 @@
 | 抽奖（加权随机） | `lottery_service` 按概率与库存加权抽取 |
 | 奖品管理（预设池 + 自定义） | 内置 12 项三年级适配奖品（文具/户外/兴趣），支持增删改、概率/库存/上下架 |
 | 家长绑定 + 通知 | 家长凭孩子绑定码绑定，打卡/抽奖实时通知家长 |
+| 家长解绑孩子 | 家长端可解绑已绑定的孩子，解绑后可重新绑定其他孩子 |
+| 密码修改 | 学生/家长/管理员均可通过「旧密码→新密码」修改登录密码 |
+| 全局回车提交 | 所有表单支持回车键快捷提交，提升操作效率 |
+| 速率限制 | 登录/注册接口限频（默认 10 次/分钟登录，5 次/分钟注册），防暴力破解 |
 | 数据存储与报表 | SQLite 永久存储；暑假全周期可视化学习报告（频率/最长连续/完成情况），可打印下载 |
 | H5 卡通清新 + 3 步内操作 | Vue3 单页，底部导航，打卡 3 步完成 |
 | 后台独立管理页 | `/admin` 独立页面：概览、奖品全生命周期、用户、打卡（含位置异常） |
@@ -38,7 +44,7 @@ summer-homework-checkin/
 │   │   ├── deps.py            # 鉴权依赖
 │   │   ├── routers/           # auth/checkin/lottery/prize/parent/report/admin/face
 │   │   ├── services/          # 打卡/抽奖/通知/校验/人脸/报表 业务逻辑
-│   │   └── utils/             # geo(距离) / storage(上传) / image(图像解析)
+│   │   └── utils/             # geo(距离) / storage(上传) / image(图像解析) / rate_limit(速率限制)
 │   ├── uploads/               # 上传照片（运行时生成，已 gitignore）
 │   ├── seed.py                # 种子数据（预设奖品池 + 管理员）
 │   ├── requirements.txt
@@ -46,6 +52,18 @@ summer-homework-checkin/
 └── frontend/
     ├── student/               # H5 学生端（Vue3 CDN，免构建）
     └── admin/                 # 独立后台管理页（Vue3 CDN，免构建）
+├── tests/                     # 回归测试套件（71 个测试，覆盖所有核心功能）
+│   ├── test_auth.py           # 认证模块（注册/登录/密码修改）
+│   ├── test_checkin.py        # 打卡模块
+│   ├── test_admin_review.py   # 管理审核模块
+│   ├── test_parent.py         # 家长模块（绑定/解绑/代打卡）
+│   ├── test_mall.py           # 商城/抽奖模块
+│   ├── test_challenge.py      # 闯关任务模块
+│   ├── test_report.py         # 报表模块
+│   ├── test_face.py           # 人脸模块
+│   ├── test_utils.py          # 共享测试工具
+│   ├── run_all.py             # Python 运行器
+│   └── run_tests.sh           # Shell 运行器
 ```
 
 ---
@@ -62,7 +80,20 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 默认管理员账号：**admin**（首次启动时自动生成随机密码，见控制台输出；或通过 `ADMIN_INIT_PASSWORD` 环境变量指定）
 
-> 测试/运维可调：补卡月限额 `MAX_MAKEUP_PER_MONTH=10 uvicorn ...`；地理阈值 `GEO_THRESHOLD_METERS=1500`；人脸识别相似度阈值 `FACE_MATCH_THRESHOLD=0.4`（越高越严格）；已采集底图后的人脸策略 `FACE_MODE_ON_ENROLLED=enforce`（enforce=不通过则拒绝打卡 / soft=仅标记风险）。
+> 测试/运维可调：补卡月限额 `MAX_MAKEUP_PER_MONTH=10 uvicorn ...`；地理阈值 `GEO_THRESHOLD_METERS=1500`；人脸识别相似度阈值 `FACE_MATCH_THRESHOLD=0.4`（越高越严格）；已采集底图后的人脸策略 `FACE_MODE_ON_ENROLLED=enforce`（enforce=不通过则拒绝打卡 / soft=仅标记风险）；速率限制 `RATE_LIMIT_ENABLED=0 uvicorn ...`（0=关闭）。
+
+### 2. Docker 部署
+```bash
+# 从项目根目录执行
+cd ..  # 回到 hanghang_WS/
+docker compose up -d --build summer-homework
+# 访问 http://localhost:8000/
+```
+也可使用一键部署脚本：
+```bash
+bash scripts/deploy.sh local    # 本地部署（保留数据，增量更新）
+bash scripts/deploy.sh prod     # 生产部署（自动备份 DB + 远程构建）
+```
 
 ### 2. 前端（免构建，浏览器直接访问）
 - 学生 H5：`http://<服务器>/` （手机浏览器打开，适配移动端）
@@ -83,12 +114,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/auth/register` `/api/auth/login` | 注册/登录（student/parent） |
+| PUT | `/api/auth/password` | 修改密码（旧密码→新密码） |
 | POST | `/api/checkin` | 打卡（照片+位置+补卡凭证） |
 | GET | `/api/checkin/streak` | 连续天数/抽奖券/今日状态 |
 | POST | `/api/lottery/draw` | 抽奖（消耗 1 资格） |
 | GET/POST/PUT/DELETE | `/api/admin/prizes[/id]` | 奖品全生命周期管理 |
 | POST | `/api/parent/bind` | 家长绑定孩子 |
-| GET | `/api/parent/notifications` | 家长通知 |
+| DELETE | `/api/parent/unbind/{student_id}` | 家长解绑孩子 |
+| GET | `/api/parent/child-report/{id}[/html]` | 家长查看孩子报表（JSON/HTML） |
 | POST/GET/DELETE | `/api/face/enroll` `/api/face/status` | 人脸底图采集/状态/撤销（1:1 比对基准） |
 | GET | `/api/report/me/html` `/api/parent/child-report/{id}/html` | 可视化学习报告 |
 
@@ -111,9 +144,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## 六、测试与验收
 
-- 核心流程自动化测试（`test_api.py`）：注册/登录、每日限 1 次、照片合规、补卡限额与凭证、连续天数、7 天解锁抽奖、抽奖消耗、奖品 CRUD/上下架、家长绑定与通知、学生/家长报表生成 —— **36/36 通过**。
-- 并发压力测试（`stress.py`）：300 请求 / 40 并发 / 0 失败 / 约 570 req·s⁻¹，系统稳定。
-- 真人测试建议：邀请 3–5 名三年级小学生，在手机端独立完成「注册 → 打卡 → 抽奖 → 查看报告」全流程（均可在 3 步内完成）。
+- **回归测试套件**（`tests/`）：71 个自动化测试，覆盖认证/打卡/审核/家长/商城/闯关/报表/人脸 8 大模块。
+  - 运行方式：`python -m pytest tests/ -v`（本地）或 `bash tests/run_tests.sh`（自动检测依赖）
+  - 支持多环境：`API_BASE_URL=http://192.168.1.112:6565 python -m pytest tests/ -v`
+- **真人测试建议**：邀请 3–5 名三年级小学生，在手机端独立完成「注册 → 打卡 → 抽奖 → 查看报告」全流程（均可在 3 步内完成）。
 
 ---
 
@@ -123,3 +157,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - 服务：uvicorn 多 worker（`--workers N`）或前置 Nginx；静态资源可托管至对象存储/CDN。
 - 通知：当前为站内通知；可扩展接入短信/微信模板消息（在 `notify_service` 增加渠道即可）。
 - 人脸比对：默认 insightface 本地推理（首次运行自动下载 buffalo_l，需外网）；无外网环境自动降级为安全模式（已采集底图则拒绝打卡防绕过）。若要更高精度或多用户 1:N，可重写 `services/face_service.py` 后端（已预留 `face_embedding` 等字段）。
+
+---
+
+## 八、版本记录
+
+### v0.9（2026-07-08）
+- **新增**：密码修改（所有角色通用，旧密码→新密码）
+- **新增**：家长端解绑孩子（DELETE `/api/parent/unbind/{student_id}`），解绑后可重新绑定
+- **新增**：全局回车提交，所有表单支持 Enter 快捷操作
+- **新增**：速率限制器（登录 10 次/分钟、注册 5 次/分钟），防暴力破解
+- **改进**：管理员默认密码通过 `ADMIN_INIT_PASSWORD` 环境变量指定，未设置时自动生成随机密码
+- **改进**：回归测试全面重构 — 8 个独立模块、71 个测试用例；支持多环境（本地/生产）运行
+- **修复**：纯色 JPEG 照片因体积过小被服务器拒绝的问题
+- **修复**：测试中的速率限制冲突（通过 `RATE_LIMIT_ENABLED=0` 环境变量关闭）

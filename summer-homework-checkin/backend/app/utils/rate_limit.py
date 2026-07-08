@@ -1,9 +1,13 @@
 """简易内存速率限制器（防暴力破解 / 批量注册）。"""
+import os
 import time
 from collections import defaultdict
 from threading import Lock
 
 from fastapi import Request, HTTPException
+
+# 是否启用速率限制（测试环境可关闭）
+_RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "1") == "1"
 
 # 配置：(路径前缀, 最大请求数, 时间窗口秒数)
 _RATE_LIMIT_RULES: list[tuple[str, int, int]] = [
@@ -26,6 +30,8 @@ def _get_client_ip(request: Request) -> str:
 
 def check_rate_limit(request: Request):
     """在路由处理前调用，超限则抛出 HTTPException(429)。"""
+    if not _RATE_LIMIT_ENABLED:
+        return
     path = request.url.path
     client_ip = _get_client_ip(request)
     now = time.time()

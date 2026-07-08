@@ -11,10 +11,7 @@ venv/
 .venv/
 .env
 .secret_key
-*.db
-*.db-wal
-*.db-shm
 backups/
 README.md
-test_review.py
 CHALLENGE_TASK_SUMMARY.md
+tests/

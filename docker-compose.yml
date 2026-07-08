@@ -23,6 +23,8 @@ services:
       # 安全配置（生产环境请更换为随机字符串，或通过 .env 文件注入）
       SUMMER_SECRET: ${SUMMER_SECRET:-summer-local-dev-secret}
       ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+      # 速率限制（默认开启，测试可设为 0）
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-1}
     volumes:
       - summer-data:/data
     restart: unless-stopped
