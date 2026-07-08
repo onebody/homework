@@ -104,7 +104,9 @@ def _stamp_initial_revision():
         from alembic.script import ScriptDirectory
         from alembic.config import Config
         alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
-        alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
+        # 使用纯路径字符串，避免 null bytes 问题
+        db_url = "sqlite:///" + str(DB_PATH)
+        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
         script = ScriptDirectory.from_config(alembic_cfg)
         head = script.get_current_head()
         if not head:
@@ -131,6 +133,28 @@ def run_seed():
     seed()
 
 
+def backfill_bind_codes():
+    """补全已有学生的绑定码。"""
+    try:
+        from app.database import SessionLocal
+        from app.models import User
+        db = SessionLocal()
+        students = db.query(User).filter(
+            User.role == "student",
+            (User.bind_code.is_(None)) | (User.bind_code == ""),
+        ).all()
+        for s in students:
+            s.bind_code = f"S{s.id:05d}"
+        if students:
+            db.commit()
+            print(f"  已为 {len(students)} 名学生补全绑定码")
+        else:
+            print("  无需补全绑定码")
+        db.close()
+    except Exception as e:
+        print(f"  回填绑定码失败: {e}")
+
+
 def main():
     args = sys.argv[1:]
 
@@ -149,6 +173,7 @@ def main():
     # 默认：完整流程（迁移 + 种子数据）
     backup_db()
     run_migrations()
+    backfill_bind_codes()
     run_seed()
     print("🚀 数据库准备就绪")
 

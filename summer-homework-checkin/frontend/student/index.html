@@ -50,9 +50,19 @@
         @click="selectChild(c.student_id)"
       >{{ c.nickname }}</span>
     </div>
-    <div class="empty-tip" v-if="isParent && children.length===0">
-      <p>尚未绑定孩子。</p>
-      <p class="muted">请让孩子在「我的」中查看绑定码，再用家长账号绑定。</p>
+    <div class="card bind-card" v-if="isParent && children.length===0">
+      <h3>📎 绑定孩子</h3>
+      <p class="muted">请输入孩子的用户名和绑定码来绑定</p>
+      <input v-model="bindForm.child_username" placeholder="孩子的用户名" class="bind-input" />
+      <input v-model="bindForm.bind_code" placeholder="绑定码（如 S00001）" class="bind-input" />
+      <button class="primary big" :disabled="bindBusy" @click="doBind">
+        {{ bindBusy ? '绑定中…' : '绑定孩子' }}
+      </button>
+      <p class="muted tip">孩子可在「我的」页面查看自己的绑定码</p>
+    </div>
+
+    <div class="empty-tip" v-else-if="isParent && children.length>0">
+      <p>已绑定 {{ children.length }} 个孩子</p>
     </div>
 
     <!-- 首页 -->
@@ -218,6 +228,15 @@
         <p>⭐ 积分：{{ points }}</p>
         <p>连续打卡：{{ streak.current_streak }} 天 ｜ 抽奖券：{{ streak.lottery_tickets }}</p>
         <button class="ghost" @click="openReport">📊 查看 / 下载学习报告</button>
+      </div>
+      <div class="card" v-if="isParent">
+        <h3>📎 绑定更多孩子</h3>
+        <input v-model="bindForm.child_username" placeholder="孩子的用户名" class="bind-input" />
+        <input v-model="bindForm.bind_code" placeholder="绑定码（如 S00001）" class="bind-input" />
+        <button class="primary" :disabled="bindBusy" @click="doBind">
+          {{ bindBusy ? '绑定中…' : '绑定' }}
+        </button>
+        <p class="muted tip">已绑定 {{ children.length }} 个孩子</p>
       </div>
       <div class="card" v-if="!isParent">
         <h3>📜 打卡记录</h3>

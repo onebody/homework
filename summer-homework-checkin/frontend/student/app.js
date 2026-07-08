@@ -7,6 +7,8 @@ createApp({
       authMode: "login",
       regRole: "student",
       form: { username: "", nickname: "", password: "" },
+      bindForm: { child_username: "", bind_code: "" },
+      bindBusy: false,
       token: localStorage.getItem("token") || "",
       user: {},
 
@@ -106,6 +108,28 @@ createApp({
         if (this.isParent) await this.loadChildren();
         else await this.loadHome();
       } catch (e) { this.showToast(e.message); }
+    },
+    async doBind() {
+      if (!this.bindForm.child_username.trim() || !this.bindForm.bind_code.trim()) {
+        this.showToast("请填写孩子的用户名和绑定码");
+        return;
+      }
+      this.bindBusy = true;
+      try {
+        const d = await this.api("/api/parent/bind", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            child_username: this.bindForm.child_username.trim(),
+            bind_code: this.bindForm.bind_code.trim(),
+          }),
+        });
+        this.showToast(d.message || "绑定成功");
+        this.bindForm = { child_username: "", bind_code: "" };
+        await this.loadChildren();
+        // 如果刚绑定第一个孩子，切换到首页
+        if (this.children.length === 1) this.view = "home";
+      } catch (e) { this.showToast(e.message); }
+      finally { this.bindBusy = false; }
     },
     logout() {
       this.token = ""; localStorage.removeItem("token"); this.view = "login";
