@@ -139,8 +139,9 @@ createApp({
       this.children = await this.api("/api/parent/children");
       if (this.children.length === 0) {
         this.actingChildId = null;
-        this.streak = { points: 0, today_checked: false };
-        this.mall = { points: 0, prizes: [], redemptions: [], lottery_records: [] };
+        this.streak = { current_streak: 0, longest_streak: 0, effective_checkins: 0, lottery_tickets: 0, today_checked: false, can_makeup_this_month: 3, points: 0 };
+        this.today = { today_checked: false, today_pending: false, pending_count: 0, can_makeup_this_month: 3 };
+        this.mall = { points: 0, lottery_tickets: 0, prizes: [], redemptions: [], lottery_records: [] };
         return;
       }
       this.actingChildId = this.children[0].student_id;
@@ -175,7 +176,7 @@ createApp({
         effective_checkins: cs.effective_checkins, lottery_tickets: cs.lottery_tickets,
         points: cs.points, today_checked: cs.today_checked, can_makeup_this_month: 3,
       };
-      this.today = { today_checked: cs.today_checked, can_makeup_this_month: 3 };
+      this.today = { today_checked: cs.today_checked, today_pending: cs.today_pending || false, pending_count: 0, can_makeup_this_month: 3 };
     },
     onPhoto(e) {
       const f = e.target.files[0]; if (!f) return;
