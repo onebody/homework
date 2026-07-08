@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import User, StudentParent
-from ..schemas import UserRegister, UserLogin, UserOut, TokenOut
+from ..schemas import UserRegister, UserLogin, UserOut, TokenOut, PasswordChangeRequest
 from ..security import hash_password, verify_password, create_token
 from ..deps import get_current_user
 
@@ -51,3 +51,16 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return UserOut.model_validate(user)
+
+
+@router.put("/password")
+def change_password(payload: PasswordChangeRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not verify_password(payload.old_password, user.password_hash, user.password_salt or ""):
+        raise HTTPException(status_code=400, detail="原密码错误")
+    if len(payload.new_password) < 4:
+        raise HTTPException(status_code=400, detail="新密码至少 4 位")
+    pw_hash, pw_salt = hash_password(payload.new_password)
+    user.password_hash = pw_hash
+    user.password_salt = pw_salt
+    db.commit()
+    return {"ok": True, "message": "密码修改成功，下次登录请使用新密码"}

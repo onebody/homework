@@ -25,7 +25,7 @@
       </div>
       <input v-model="form.username" placeholder="用户名" />
       <input v-model="form.nickname" placeholder="昵称（如：小明）" v-if="authMode==='register'" />
-      <input v-model="form.password" type="password" placeholder="密码" />
+      <input v-model="form.password" type="password" placeholder="密码" @keydown.enter="authMode==='login'?login():register()" />
       <button class="primary big" @click="authMode==='login'?login():register()">
         {{ authMode==='login' ? '登录' : '注册并进入' }}
       </button>
@@ -54,7 +54,7 @@
       <h3>📎 绑定孩子</h3>
       <p class="muted">请输入孩子的用户名和绑定码来绑定</p>
       <input v-model="bindForm.child_username" placeholder="孩子的用户名" class="bind-input" />
-      <input v-model="bindForm.bind_code" placeholder="绑定码（如 S00001）" class="bind-input" />
+      <input v-model="bindForm.bind_code" placeholder="绑定码（如 S00001）" class="bind-input" @keydown.enter="doBind" />
       <button class="primary big" :disabled="bindBusy" @click="doBind">
         {{ bindBusy ? '绑定中…' : '绑定孩子' }}
       </button>
@@ -229,6 +229,19 @@
         <p>连续打卡：{{ streak.current_streak }} 天 ｜ 抽奖券：{{ streak.lottery_tickets }}</p>
         <button class="ghost" @click="openReport">📊 查看 / 下载学习报告</button>
       </div>
+      <div class="card">
+        <h3>🔑 密码设置</h3>
+        <template v-if="!showPwdForm">
+          <button class="ghost" @click="showPwdForm=true">修改密码</button>
+        </template>
+        <template v-else>
+          <input v-model="passwordForm.old_password" type="password" placeholder="原密码" />
+          <input v-model="passwordForm.new_password" type="password" placeholder="新密码（至少 4 位）" />
+          <input v-model="passwordForm.confirm_password" type="password" placeholder="确认新密码" @keydown.enter="changePassword" />
+          <button class="primary" :disabled="pwdBusy" @click="changePassword">{{ pwdBusy ? '修改中…' : '确认修改' }}</button>
+          <button class="ghost" style="margin-top:8px" @click="showPwdForm=false; passwordForm={old_password:'',new_password:'',confirm_password:''}">取消</button>
+        </template>
+      </div>
       <div class="card" v-if="isParent">
         <h3>📎 已绑定的孩子</h3>
         <div class="child-list">
@@ -242,7 +255,7 @@
       <div class="card" v-if="isParent">
         <h3>📎 绑定更多孩子</h3>
         <input v-model="bindForm.child_username" placeholder="孩子的用户名" class="bind-input" />
-        <input v-model="bindForm.bind_code" placeholder="绑定码（如 S00001）" class="bind-input" />
+        <input v-model="bindForm.bind_code" placeholder="绑定码（如 S00001）" class="bind-input" @keydown.enter="doBind" />
         <button class="primary" :disabled="bindBusy" @click="doBind">
           {{ bindBusy ? '绑定中…' : '绑定' }}
         </button>

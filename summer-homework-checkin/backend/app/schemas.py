@@ -37,6 +37,11 @@ class UserOut(BaseModel):
     points: int = 0
 
 
+class PasswordChangeRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"

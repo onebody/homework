@@ -380,3 +380,9 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
 @media (max-width:768px){
   .login-card{width:90%;max-width:360px;padding:26px 22px}
 }
+
+/* 修改密码 */
+.pwd-card{background:#fff;border-radius:14px;padding:20px;max-width:420px;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+.pwd-card label{display:block;margin-bottom:12px;font-size:13px;color:#555}
+.pwd-actions{display:flex;gap:10px;margin-top:16px}
+.pwd-actions .primary,.pwd-actions .ghost{flex:1}

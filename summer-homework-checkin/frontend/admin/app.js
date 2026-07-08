@@ -5,6 +5,9 @@ createApp({
     return {
       token: localStorage.getItem("admin_token") || "",
       loginForm: { username: "", password: "" },
+      showPwdForm: false,
+      passwordForm: { old_password: "", new_password: "", confirm_password: "" },
+      pwdBusy: false,
       view: "dashboard",
       stats: null, prizes: [], users: [], checkins: [], redeems: [],
       challengeTasks: [], challengeCheckins: [], viewingCheckinsTask: null,
@@ -92,6 +95,24 @@ createApp({
       } catch (e) { this.showToast(e.message); }
     },
     logout() { this.token = ""; localStorage.removeItem("admin_token"); },
+    async changePassword() {
+      const f = this.passwordForm;
+      if (!f.old_password) { this.showToast("请输入原密码"); return; }
+      if (f.new_password.length < 4) { this.showToast("新密码至少 4 位"); return; }
+      if (f.new_password !== f.confirm_password) { this.showToast("两次密码输入不一致"); return; }
+      if (f.old_password === f.new_password) { this.showToast("新密码不能与原密码相同"); return; }
+      this.pwdBusy = true;
+      try {
+        const d = await this.api("/api/auth/password", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ old_password: f.old_password, new_password: f.new_password }),
+        });
+        this.showToast(d.message || "密码修改成功");
+        this.showPwdForm = false;
+        this.passwordForm = { old_password: "", new_password: "", confirm_password: "" };
+      } catch (e) { this.showToast(e.message); }
+      finally { this.pwdBusy = false; }
+    },
     async loadAll() {
       this.stats = await this.api("/api/admin/stats");
       this.prizes = await this.api("/api/admin/prizes");

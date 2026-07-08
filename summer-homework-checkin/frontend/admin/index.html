@@ -14,7 +14,7 @@
     <div class="login-card">
       <h1>🔐 后台管理登录</h1>
       <input v-model="loginForm.username" placeholder="管理员用户名" />
-      <input v-model="loginForm.password" type="password" placeholder="密码" />
+      <input v-model="loginForm.password" type="password" placeholder="密码" @keydown.enter="login" />
       <button class="primary" @click="login">登录</button>
       <p class="tip">请联系系统管理员获取账号</p>
     </div>
@@ -37,6 +37,7 @@
         <div :class="{on:view==='redeems'}" @click="loadRedeems">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
         <div :class="{on:view==='checkins'}" @click="view='checkins'">📸 打卡记录</div>
         <div :class="{on:view==='challenges'}" @click="view='challenges'; loadChallengeTasks()">🏆 闯关任务 <span class="nav-badge" v-if="challengePendingCount>0">{{ challengePendingCount }}</span></div>
+        <div :class="{on:view==='password'}" @click="view='password'; showPwdForm=false; passwordForm={old_password:'',new_password:'',confirm_password:''}">🔑 修改密码</div>
       </div>
       <button class="logout" @click="logout">退出登录</button>
     </aside>
@@ -442,6 +443,26 @@
           </div>
 
           <p class="muted" v-if="!challengeCheckins.length" style="text-align:center;padding:20px">暂无打卡记录</p>
+        </div>
+      </section>
+
+      <!-- 修改密码 -->
+      <section v-if="view==='password'">
+        <h2>🔑 修改密码</h2>
+        <div class="pwd-card">
+          <template v-if="!showPwdForm">
+            <p class="muted">定期修改密码可以增强账号安全性</p>
+            <button class="primary" @click="showPwdForm=true">修改密码</button>
+          </template>
+          <template v-else>
+            <label>原密码 <input v-model="passwordForm.old_password" type="password" placeholder="输入原密码" /></label>
+            <label>新密码 <input v-model="passwordForm.new_password" type="password" placeholder="新密码（至少 4 位）" /></label>
+            <label>确认新密码 <input v-model="passwordForm.confirm_password" type="password" placeholder="再次输入新密码" @keydown.enter="changePassword" /></label>
+            <div class="pwd-actions">
+              <button class="ghost" @click="showPwdForm=false; passwordForm={old_password:'',new_password:'',confirm_password:''}">取消</button>
+              <button class="primary" :disabled="pwdBusy" @click="changePassword">{{ pwdBusy ? '修改中…' : '确认修改' }}</button>
+            </div>
+          </template>
         </div>
       </section>
     </main>
