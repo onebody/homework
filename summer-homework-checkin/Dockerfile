@@ -17,5 +17,5 @@ COPY frontend/ /app/frontend/
 WORKDIR /app/backend
 EXPOSE 8000
 
-# 首次启动写入管理员/奖品/闯关任务示例数据（幂等），随后启动服务
-CMD ["sh", "-c", "python seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# 启动时自动执行：数据库备份 → 迁移 → 种子数据 → 服务
+CMD ["sh", "-c", "python migrate.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

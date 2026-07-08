@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 
 from .config import UPLOAD_DIR, STUDENT_DIR, ADMIN_DIR, ALLOWED_ORIGINS
-from .database import Base, engine
+from .database import engine
 from . import models  # noqa: F401 确保模型被加载
 from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge
 from .utils.rate_limit import check_rate_limit
@@ -49,6 +49,9 @@ def health():
 
 @app.on_event("startup")
 def on_startup():
+    # 数据库迁移和种子数据由 migrate.py 在启动前完成
+    # 此处保留 create_all 作为兜底，确保表结构存在
+    from .database import Base
     Base.metadata.create_all(bind=engine)
 
 
