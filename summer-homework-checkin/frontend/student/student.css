@@ -117,6 +117,13 @@ button{font-family:inherit;cursor:pointer;border:none}
 .replace-item b{flex:1;font-size:14px}
 .replace-item .sold{color:#e74c3c}
 .mini{background:#eaf3ff;color:var(--blue);padding:5px 10px;border-radius:7px;font-size:12px;margin-right:4px}
+.mini.danger{color:#e74c3c;background:#ffebee}
+
+/* 孩子列表解绑 */
+.child-list{margin-top:6px}
+.child-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0f4f9}
+.child-item:last-child{border-bottom:none}
+.child-name{font-size:15px;font-weight:600}
 
 /* 通用模态（替换等） */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:20}

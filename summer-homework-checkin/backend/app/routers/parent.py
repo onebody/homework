@@ -32,6 +32,20 @@ def bind(payload: BindRequest, parent: User = Depends(get_current_user), db: Ses
     return {"ok": True, "message": "绑定成功"}
 
 
+@router.delete("/unbind/{student_id}")
+def unbind(student_id: int, parent: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if parent.role != "parent":
+        raise HTTPException(status_code=403, detail="仅家长可解绑孩子")
+    bind = db.query(StudentParent).filter_by(
+        student_id=student_id, parent_id=parent.id
+    ).first()
+    if not bind:
+        return {"ok": True, "message": "该孩子已解绑"}
+    db.delete(bind)
+    db.commit()
+    return {"ok": True, "message": "解绑成功"}
+
+
 @router.get("/children", response_model=list[ChildSummary])
 def children(parent: User = Depends(get_current_user), db: Session = Depends(get_db)):
     binds = db.query(StudentParent).filter_by(parent_id=parent.id).all()

@@ -230,6 +230,16 @@
         <button class="ghost" @click="openReport">📊 查看 / 下载学习报告</button>
       </div>
       <div class="card" v-if="isParent">
+        <h3>📎 已绑定的孩子</h3>
+        <div class="child-list">
+          <div class="child-item" v-for="c in children" :key="c.student_id">
+            <span class="child-name">{{ c.nickname }}</span>
+            <button class="mini ghost danger" @click="unbindChild(c.student_id)">解绑</button>
+          </div>
+        </div>
+        <p class="muted tip" v-if="!children.length">暂未绑定孩子</p>
+      </div>
+      <div class="card" v-if="isParent">
         <h3>📎 绑定更多孩子</h3>
         <input v-model="bindForm.child_username" placeholder="孩子的用户名" class="bind-input" />
         <input v-model="bindForm.bind_code" placeholder="绑定码（如 S00001）" class="bind-input" />

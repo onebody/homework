@@ -131,6 +131,15 @@ createApp({
       } catch (e) { this.showToast(e.message); }
       finally { this.bindBusy = false; }
     },
+    async unbindChild(studentId) {
+      if (!confirm("确定解绑该孩子吗？解绑后需重新绑定才能代操作。")) return;
+      try {
+        const d = await this.api("/api/parent/unbind/" + studentId, { method: "DELETE" });
+        this.showToast(d.message || "解绑成功");
+        await this.loadChildren();
+        if (this.children.length === 0) this.view = "home";
+      } catch (e) { this.showToast(e.message); }
+    },
     logout() {
       this.token = ""; localStorage.removeItem("token"); this.view = "login";
       this.form = { username: "", nickname: "", password: "" };
