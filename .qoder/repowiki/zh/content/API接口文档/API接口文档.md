@@ -11,6 +11,9 @@
 - [summer-homework-checkin/backend/app/routers/prize.py](file://summer-homework-checkin/backend/app/routers/prize.py)
 - [summer-homework-checkin/backend/app/routers/redeem.py](file://summer-homework-checkin/backend/app/routers/redeem.py)
 - [summer-homework-checkin/backend/app/routers/report.py](file://summer-homework-checkin/backend/app/routers/report.py)
+- [summer-homework-checkin/backend/app/routers/challenge.py](file://summer-homework-checkin/backend/app/routers/challenge.py)
+- [summer-homework-checkin/backend/app/services/challenge_service.py](file://summer-homework-checkin/backend/app/services/challenge_service.py)
+- [summer-homework-checkin/backend/app/models.py](file://summer-homework-checkin/backend/app/models.py)
 - [summer-homework-checkin/backend/app/schemas.py](file://summer-homework-checkin/backend/app/schemas.py)
 - [points-system/backend/app/main.py](file://points-system/backend/app/main.py)
 - [points-system/backend/app/routers/users.py](file://points-system/backend/app/routers/users.py)
@@ -19,6 +22,14 @@
 - [points-system/backend/app/routers/lottery.py](file://points-system/backend/app/routers/lottery.py)
 - [points-system/backend/app/schemas.py](file://points-system/backend/app/schemas.py)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- 新增挑战任务系统完整API接口文档
+- 添加学生端挑战任务相关接口（任务列表、详情、打卡提交、记录查询）
+- 添加管理端挑战任务管理接口（任务CRUD、审核管理、统计查询）
+- 补充挑战任务数据模型和服务层说明
+- 更新架构图以包含挑战任务模块
 
 ## 目录
 1. [简介](#简介)
@@ -33,9 +44,10 @@
 10. [附录：认证、数据格式与版本兼容](#附录认证数据格式与版本兼容)
 
 ## 简介
-本文件为“暑假作业打卡系统”与“积分兑换系统”的完整API参考，覆盖以下能力：
+本文件为"暑假作业打卡系统"与"积分兑换系统"的完整API参考，覆盖以下能力：
 - 用户认证（注册、登录、获取当前用户）
 - 打卡管理（提交打卡、查询今日状态、连续打卡统计、历史记录）
+- **挑战任务系统**（学生端任务浏览与打卡、管理端任务管理与审核）
 - 人脸识别（采集人脸底图、查询/撤销采集状态）
 - 家长绑定与代操作（绑定孩子、代打卡、代抽奖、查看报告）
 - 奖品与商城（公开奖品列表、后台奖品管理、积分兑换、兑换替换）
@@ -48,7 +60,7 @@
 
 ## 项目结构
 两个后端服务分别提供不同业务域：
-- 暑假作业打卡系统：面向学生与家长，包含打卡、人脸、家长绑定、兑换、抽奖、报表等
+- 暑假作业打卡系统：面向学生与家长，包含打卡、人脸、家长绑定、兑换、抽奖、报表、挑战任务等
 - 积分兑换系统：面向通用用户，提供积分账户、兑换、抽奖券转换与抽奖
 
 ```mermaid
@@ -63,6 +75,8 @@ A_prize["routers/prize.py<br/>奖品管理"]
 A_redeem["routers/redeem.py<br/>兑换"]
 A_lottery["routers/lottery.py<br/>抽奖"]
 A_report["routers/report.py<br/>报表"]
+A_challenge["routers/challenge.py<br/>挑战任务"]
+A_challenge_svc["services/challenge_service.py<br/>挑战任务服务"]
 end
 subgraph "积分兑换系统"
 B_main["main.py<br/>路由挂载/静态资源"]
@@ -79,28 +93,26 @@ A_main --> A_prize
 A_main --> A_redeem
 A_main --> A_lottery
 A_main --> A_report
+A_main --> A_challenge
+A_challenge --> A_challenge_svc
 B_main --> B_users
 B_main --> B_points
 B_main --> B_convert
 B_main --> B_lottery
 ```
 
-图示来源
-- [summer-homework-checkin/backend/app/main.py:1-48](file://summer-homework-checkin/backend/app/main.py#L1-L48)
-- [points-system/backend/app/main.py:1-33](file://points-system/backend/app/main.py#L1-L33)
-
-章节来源
-- [summer-homework-checkin/backend/app/main.py:1-48](file://summer-homework-checkin/backend/app/main.py#L1-L48)
+**图示来源**
+- [summer-homework-checkin/backend/app/main.py:1-61](file://summer-homework-checkin/backend/app/main.py#L1-L61)
 - [points-system/backend/app/main.py:1-33](file://points-system/backend/app/main.py#L1-L33)
 
 ## 核心组件
-- 路由层：按模块划分（auth、checkin、face、parent、prize、redeem、report、users、points、convert、lottery）
+- 路由层：按模块划分（auth、checkin、face、parent、prize、redeem、report、challenge、users、points、convert、lottery）
+- 服务层：封装业务逻辑（如打卡、人脸、兑换、报表、抽奖、挑战任务）
 - 模型与Schema：Pydantic定义请求/响应结构，确保类型校验与序列化
-- 服务层：封装业务逻辑（如打卡、人脸、兑换、报表、抽奖）
 - 安全与鉴权：基于Bearer Token的角色校验（get_current_user、require_role）
 - 静态资源：上传照片、前端页面托管
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/auth.py:1-52](file://summer-homework-checkin/backend/app/routers/auth.py#L1-L52)
 - [summer-homework-checkin/backend/app/routers/checkin.py:1-80](file://summer-homework-checkin/backend/app/routers/checkin.py#L1-L80)
 - [summer-homework-checkin/backend/app/routers/face.py:1-45](file://summer-homework-checkin/backend/app/routers/face.py#L1-L45)
@@ -108,7 +120,9 @@ B_main --> B_lottery
 - [summer-homework-checkin/backend/app/routers/prize.py:1-66](file://summer-homework-checkin/backend/app/routers/prize.py#L1-L66)
 - [summer-homework-checkin/backend/app/routers/redeem.py:1-81](file://summer-homework-checkin/backend/app/routers/redeem.py#L1-L81)
 - [summer-homework-checkin/backend/app/routers/report.py:1-36](file://summer-homework-checkin/backend/app/routers/report.py#L1-L36)
-- [summer-homework-checkin/backend/app/schemas.py:1-244](file://summer-homework-checkin/backend/app/schemas.py#L1-L244)
+- [summer-homework-checkin/backend/app/routers/challenge.py:1-377](file://summer-homework-checkin/backend/app/routers/challenge.py#L1-L377)
+- [summer-homework-checkin/backend/app/services/challenge_service.py:1-281](file://summer-homework-checkin/backend/app/services/challenge_service.py#L1-L281)
+- [summer-homework-checkin/backend/app/schemas.py:1-322](file://summer-homework-checkin/backend/app/schemas.py#L1-L322)
 - [points-system/backend/app/routers/users.py:1-192](file://points-system/backend/app/routers/users.py#L1-L192)
 - [points-system/backend/app/routers/points.py:1-28](file://points-system/backend/app/routers/points.py#L1-L28)
 - [points-system/backend/app/routers/convert.py:1-64](file://points-system/backend/app/routers/convert.py#L1-L64)
@@ -134,8 +148,8 @@ Service-->>Router : 业务结果
 Router-->>Client : JSON响应
 ```
 
-图示来源
-- [summer-homework-checkin/backend/app/main.py:1-48](file://summer-homework-checkin/backend/app/main.py#L1-L48)
+**图示来源**
+- [summer-homework-checkin/backend/app/main.py:1-61](file://summer-homework-checkin/backend/app/main.py#L1-L61)
 - [points-system/backend/app/main.py:1-33](file://points-system/backend/app/main.py#L1-L33)
 
 ## 详细接口说明
@@ -166,8 +180,8 @@ Router-->>Client : JSON响应
 - 响应示例
   - { "status": "ok" }
 
-章节来源
-- [summer-homework-checkin/backend/app/main.py:32-34](file://summer-homework-checkin/backend/app/main.py#L32-L34)
+**章节来源**
+- [summer-homework-checkin/backend/app/main.py:45-47](file://summer-homework-checkin/backend/app/main.py#L45-L47)
 
 ---
 
@@ -184,7 +198,7 @@ Router-->>Client : JSON响应
   - 需认证
   - 响应：UserOut
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/auth.py:10-52](file://summer-homework-checkin/backend/app/routers/auth.py#L10-L52)
 - [summer-homework-checkin/backend/app/schemas.py:5-44](file://summer-homework-checkin/backend/app/schemas.py#L5-L44)
 
@@ -210,9 +224,116 @@ Router-->>Client : JSON响应
   - 需认证
   - 响应：CheckInOut[]（按时间倒序）
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/checkin.py:14-80](file://summer-homework-checkin/backend/app/routers/checkin.py#L14-L80)
 - [summer-homework-checkin/backend/app/schemas.py:46-96](file://summer-homework-checkin/backend/app/schemas.py#L46-L96)
+
+---
+
+### 挑战任务系统（暑假作业打卡系统）
+
+#### 学生端接口
+- GET /api/challenge/tasks
+  - 需认证（仅学生）
+  - 响应：ChallengeTaskStudentOut[]（任务列表，包含解锁状态和用户打卡状态）
+  - 错误：403（非学生）
+- GET /api/challenge/tasks/{task_id}
+  - 需认证（仅学生）
+  - 响应：任务详情对象（包含任务信息、解锁状态、最新打卡记录）
+  - 错误：403（非学生）、404（任务不存在）
+- POST /api/challenge/tasks/{task_id}/checkin
+  - 需认证（仅学生）
+  - 表单字段：content?(文本内容), attachments?(附件JSON字符串)
+  - 响应：{ id, message }
+  - 错误：403（非学生）、400（任务未完成/待审核中）
+- POST /api/challenge/tasks/{task_id}/checkin-with-content
+  - 需认证（仅学生）
+  - 表单字段：content?(文本内容), attachments?(附件JSON字符串)
+  - 响应：{ id, message }
+  - 错误：403（非学生）、400（任务未完成/待审核中）
+- POST /api/challenge/upload
+  - 需认证
+  - 表单字段：file(必填，图片/视频文件)
+  - 响应：{ url, path }
+  - 错误：400（文件为空）
+- GET /api/challenge/my-checkins
+  - 需认证（仅学生）
+  - 查询参数：task_id?(可选，按任务筛选)
+  - 响应：ChallengeCheckInOut[]（我的打卡记录列表）
+  - 错误：403（非学生）
+
+#### 管理端接口
+- GET /api/challenge/admin/tasks
+  - 需认证（仅管理员）
+  - 响应：ChallengeTaskOut[]（任务列表，包含统计信息）
+  - 错误：403（非管理员）
+- POST /api/challenge/admin/tasks
+  - 需认证（仅管理员）
+  - 表单字段：name(必填), description?, sort_order=0, reward_points=10, status="locked", unlock_at?, unlock_condition?
+  - 响应：{ message, task_id }
+  - 错误：403（非管理员）
+- PUT /api/challenge/admin/tasks/{task_id}
+  - 需认证（仅管理员）
+  - 表单字段：name?, description?, sort_order?, reward_points?, status?, unlock_at?, unlock_condition?
+  - 响应：{ message }
+  - 错误：403（非管理员）、404（任务不存在）
+- DELETE /api/challenge/admin/tasks/{task_id}
+  - 需认证（仅管理员）
+  - 响应：{ message }
+  - 错误：403（非管理员）、404（任务不存在）
+- POST /api/challenge/admin/tasks/{task_id}/unlock
+  - 需认证（仅管理员）
+  - 响应：{ message }
+  - 错误：403（非管理员）、404（任务不存在）
+- GET /api/challenge/admin/checkins
+  - 需认证（仅管理员）
+  - 查询参数：task_id?(可选), status?(可选，pending/approved/rejected)
+  - 响应：ChallengeCheckInOut[]（打卡记录列表）
+  - 错误：403（非管理员）
+- GET /api/challenge/admin/checkins/pending-count
+  - 需认证（仅管理员）
+  - 响应：{ count }（待审核数量）
+  - 错误：403（非管理员）
+- PUT /api/challenge/admin/checkins/{checkin_id}/review
+  - 需认证（仅管理员）
+  - 请求体：{ status: "approve"|"reject", note? }
+  - 响应：{ message }
+  - 错误：403（非管理员）、400（无效审核操作）、404（打卡记录不存在）
+
+#### 挑战任务数据模型
+- ChallengeTask：闯关任务定义，包含名称、描述、排序、奖励积分、状态、解锁时间等
+- ChallengeCheckIn：闯关任务打卡记录，包含用户ID、任务ID、内容、附件、审核状态等
+
+#### 挑战任务业务流程
+```mermaid
+flowchart TD
+Start(["学生提交打卡"]) --> CheckUnlock{"任务是否已解锁?"}
+CheckUnlock --> |否| ErrorLocked["返回错误：任务尚未开放"]
+CheckUnlock --> |是| CheckStatus{"检查用户状态"}
+CheckStatus --> |已完成| ErrorCompleted["返回错误：该任务已完成"]
+CheckStatus --> |待审核| ErrorReviewing["返回错误：已有待审核记录"]
+CheckStatus --> |可提交| CreateRecord["创建打卡记录"]
+CreateRecord --> NotifyAdmin["通知管理员"]
+NotifyAdmin --> Success["返回成功：等待审核"]
+subgraph "管理员审核流程"
+AdminStart(["管理员审核"]) --> ReviewAction{"审核操作"}
+ReviewAction --> |通过| Approve["标记通过并发放积分"]
+ReviewAction --> |拒绝| Reject["标记拒绝并记录原因"]
+Approve --> NotifyStudent["通知学生"]
+Reject --> NotifyStudent
+end
+```
+
+**图示来源**
+- [summer-homework-checkin/backend/app/services/challenge_service.py:149-176](file://summer-homework-checkin/backend/app/services/challenge_service.py#L149-L176)
+- [summer-homework-checkin/backend/app/services/challenge_service.py:195-234](file://summer-homework-checkin/backend/app/services/challenge_service.py#L195-L234)
+
+**章节来源**
+- [summer-homework-checkin/backend/app/routers/challenge.py:18-186](file://summer-homework-checkin/backend/app/routers/challenge.py#L18-186)
+- [summer-homework-checkin/backend/app/routers/challenge.py:188-377](file://summer-homework-checkin/backend/app/routers/challenge.py#L188-377)
+- [summer-homework-checkin/backend/app/services/challenge_service.py:1-281](file://summer-homework-checkin/backend/app/services/challenge_service.py#L1-281)
+- [summer-homework-checkin/backend/app/models.py:179-213](file://summer-homework-checkin/backend/app/models.py#L179-L213)
+- [summer-homework-checkin/backend/app/schemas.py:247-322](file://summer-homework-checkin/backend/app/schemas.py#L247-L322)
 
 ---
 
@@ -229,7 +350,7 @@ Router-->>Client : JSON响应
   - 需认证
   - 响应：FaceStatusOut
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/face.py:11-45](file://summer-homework-checkin/backend/app/routers/face.py#L11-L45)
 - [summer-homework-checkin/backend/app/schemas.py:232-244](file://summer-homework-checkin/backend/app/schemas.py#L232-L244)
 
@@ -283,7 +404,7 @@ Router-->>Client : JSON响应
   - 查询参数：start(date), end(date)
   - 响应：HTML字符串
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/parent.py:17-237](file://summer-homework-checkin/backend/app/routers/parent.py#L17-L237)
 - [summer-homework-checkin/backend/app/schemas.py:156-230](file://summer-homework-checkin/backend/app/schemas.py#L156-L230)
 
@@ -324,7 +445,7 @@ Router-->>Client : JSON响应
   - 响应：RedemptionOut
   - 错误：403（非学生/家长）
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/prize.py:9-66](file://summer-homework-checkin/backend/app/routers/prize.py#L9-L66)
 - [summer-homework-checkin/backend/app/routers/redeem.py:12-81](file://summer-homework-checkin/backend/app/routers/redeem.py#L12-L81)
 - [summer-homework-checkin/backend/app/schemas.py:98-213](file://summer-homework-checkin/backend/app/schemas.py#L98-L213)
@@ -340,7 +461,7 @@ Router-->>Client : JSON响应
   - 响应：LotteryResult（is_win, prize_name?, prize_id?, tickets_left, message）
   - 错误：403（非学生）
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/lottery.py:10-30](file://summer-homework-checkin/backend/app/routers/lottery.py#L10-L30)
 - [summer-homework-checkin/backend/app/schemas.py:140-154](file://summer-homework-checkin/backend/app/schemas.py#L140-L154)
 
@@ -358,7 +479,7 @@ Router-->>Client : JSON响应
   - 响应：HTML字符串
   - 错误：403（非学生）
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/report.py:14-36](file://summer-homework-checkin/backend/app/routers/report.py#L14-L36)
 - [summer-homework-checkin/backend/app/schemas.py:215-230](file://summer-homework-checkin/backend/app/schemas.py#L215-L230)
 
@@ -378,7 +499,7 @@ Router-->>Client : JSON响应
   - 查询参数：user_id(int)
   - 响应：一次性聚合数据（用户信息、积分余额、累计收支、抽奖券、是否今日已打卡、连续天数、奖品列表、奖池、兑换记录、转换记录、抽奖券流水、抽奖记录等）
 
-章节来源
+**章节来源**
 - [points-system/backend/app/routers/users.py:8-192](file://points-system/backend/app/routers/users.py#L8-L192)
 - [points-system/backend/app/schemas.py:6-16](file://points-system/backend/app/schemas.py#L6-L16)
 
@@ -395,7 +516,7 @@ Router-->>Client : JSON响应
   - 查询参数：user_id(int), limit(int, 默认50)
   - 响应：LedgerOut[]（按创建时间倒序）
 
-章节来源
+**章节来源**
 - [points-system/backend/app/routers/points.py:7-28](file://points-system/backend/app/routers/points.py#L7-L28)
 - [points-system/backend/app/schemas.py:18-36](file://points-system/backend/app/schemas.py#L18-L36)
 
@@ -416,7 +537,7 @@ Router-->>Client : JSON响应
   - 查询参数：user_id(int)
   - 响应：LotteryTicketLedgerOut[]
 
-章节来源
+**章节来源**
 - [points-system/backend/app/routers/convert.py:8-64](file://points-system/backend/app/routers/convert.py#L8-L64)
 - [points-system/backend/app/schemas.py:90-120](file://points-system/backend/app/schemas.py#L90-L120)
 
@@ -436,7 +557,7 @@ Router-->>Client : JSON响应
   - 查询参数：user_id(int)
   - 响应：LotteryDrawOut[]
 
-章节来源
+**章节来源**
 - [points-system/backend/app/routers/lottery.py:8-55](file://points-system/backend/app/routers/lottery.py#L8-L55)
 - [points-system/backend/app/schemas.py:122-147](file://points-system/backend/app/schemas.py#L122-L147)
 
@@ -444,25 +565,59 @@ Router-->>Client : JSON响应
 
 ### 关键流程时序图
 
-#### 学生打卡流程（暑假作业打卡系统）
+#### 学生挑战任务打卡流程
 ```mermaid
 sequenceDiagram
 participant C as "学生客户端"
-participant R as "/api/checkin"
-participant S as "checkin_service"
-participant U as "存储/图片处理"
+participant R as "/api/challenge/tasks/{id}/checkin"
+participant S as "challenge_service"
 participant DB as "数据库"
-C->>R : POST /api/checkin (multipart : photo, proof, 位置/补卡信息)
-R->>S : create_checkin(...)
-S->>U : 保存照片/验证图片
-S->>DB : 写入打卡记录/更新用户连续打卡/发放积分或券
+participant N as "通知系统"
+C->>R : POST /api/challenge/tasks/{id}/checkin (content, attachments)
+R->>S : submit_checkin(user, task_id, data)
+S->>DB : 检查任务状态和用户状态
+alt 任务未解锁或状态不允许
+S-->>R : 抛出ValueError异常
+R-->>C : 400 错误响应
+else 可以提交
+S->>DB : 创建打卡记录(状态=pending)
+S->>N : 通知管理员有新打卡待审核
 DB-->>S : 成功
-S-->>R : CheckInOut
-R-->>C : 200 + CheckInOut
+S-->>R : 返回打卡ID和消息
+R-->>C : 200 + 成功响应
+end
 ```
 
-图示来源
-- [summer-homework-checkin/backend/app/routers/checkin.py:17-37](file://summer-homework-checkin/backend/app/routers/checkin.py#L17-L37)
+**图示来源**
+- [summer-homework-checkin/backend/app/routers/challenge.py:76-104](file://summer-homework-checkin/backend/app/routers/challenge.py#L76-L104)
+- [summer-homework-checkin/backend/app/services/challenge_service.py:149-176](file://summer-homework-checkin/backend/app/services/challenge_service.py#L149-L176)
+
+#### 管理员审核挑战任务打卡流程
+```mermaid
+sequenceDiagram
+participant A as "管理员客户端"
+participant R as "/api/challenge/admin/checkins/{id}/review"
+participant S as "challenge_service"
+participant DB as "数据库"
+participant N as "通知系统"
+A->>R : PUT /api/challenge/admin/checkins/{id}/review {action, note}
+R->>S : review_checkin(checkin, action, note, admin_id)
+S->>DB : 查询任务和用户信息
+alt 审核通过
+S->>DB : 标记approved并增加用户积分
+S->>N : 通知学生审核通过
+else 审核拒绝
+S->>DB : 标记rejected并记录原因
+S->>N : 通知学生审核未通过
+end
+DB-->>S : 成功
+S-->>R : 返回成功消息
+R-->>A : 200 + 成功响应
+```
+
+**图示来源**
+- [summer-homework-checkin/backend/app/routers/challenge.py:356-376](file://summer-homework-checkin/backend/app/routers/challenge.py#L356-L376)
+- [summer-homework-checkin/backend/app/services/challenge_service.py:195-234](file://summer-homework-checkin/backend/app/services/challenge_service.py#L195-L234)
 
 #### 家长代孩子兑换并可能获得抽奖券（暑假作业打卡系统）
 ```mermaid
@@ -483,7 +638,7 @@ R-->>P : RedeemResult(redemption=...)
 end
 ```
 
-图示来源
+**图示来源**
 - [summer-homework-checkin/backend/app/routers/parent.py:131-154](file://summer-homework-checkin/backend/app/routers/parent.py#L131-L154)
 - [summer-homework-checkin/backend/app/routers/redeem.py:48-69](file://summer-homework-checkin/backend/app/routers/redeem.py#L48-L69)
 
@@ -497,7 +652,7 @@ DoConvert --> UpdateAcc["更新积分余额与抽奖券数量"]
 UpdateAcc --> ReturnRes["返回转换记录与最新余额/券数"]
 ```
 
-图示来源
+**图示来源**
 - [points-system/backend/app/routers/convert.py:11-28](file://points-system/backend/app/routers/convert.py#L11-L28)
 
 ## 依赖关系分析
@@ -515,13 +670,15 @@ Parent["parent.py"] --> SchemasA
 Prize["prize.py"] --> SchemasA
 Redeem["redeem.py"] --> SchemasA
 Report["report.py"] --> SchemasA
+Challenge["challenge.py"] --> SchemasA
+ChallengeSvc["challenge_service.py"] --> Models["models.py"]
 UsersB["users.py(积分系统)"] --> SchemasB["schemas.py(积分系统)"]
 PointsB["points.py"] --> SchemasB
 ConvertB["convert.py"] --> SchemasB
 LotteryB["lottery.py"] --> SchemasB
 ```
 
-图示来源
+**图示来源**
 - [summer-homework-checkin/backend/app/routers/auth.py:1-52](file://summer-homework-checkin/backend/app/routers/auth.py#L1-L52)
 - [summer-homework-checkin/backend/app/routers/checkin.py:1-80](file://summer-homework-checkin/backend/app/routers/checkin.py#L1-L80)
 - [summer-homework-checkin/backend/app/routers/face.py:1-45](file://summer-homework-checkin/backend/app/routers/face.py#L1-L45)
@@ -529,7 +686,10 @@ LotteryB["lottery.py"] --> SchemasB
 - [summer-homework-checkin/backend/app/routers/prize.py:1-66](file://summer-homework-checkin/backend/app/routers/prize.py#L1-L66)
 - [summer-homework-checkin/backend/app/routers/redeem.py:1-81](file://summer-homework-checkin/backend/app/routers/redeem.py#L1-L81)
 - [summer-homework-checkin/backend/app/routers/report.py:1-36](file://summer-homework-checkin/backend/app/routers/report.py#L1-L36)
-- [summer-homework-checkin/backend/app/schemas.py:1-244](file://summer-homework-checkin/backend/app/schemas.py#L1-L244)
+- [summer-homework-checkin/backend/app/routers/challenge.py:1-377](file://summer-homework-checkin/backend/app/routers/challenge.py#L1-L377)
+- [summer-homework-checkin/backend/app/services/challenge_service.py:1-281](file://summer-homework-checkin/backend/app/services/challenge_service.py#L1-L281)
+- [summer-homework-checkin/backend/app/models.py:179-213](file://summer-homework-checkin/backend/app/models.py#L179-L213)
+- [summer-homework-checkin/backend/app/schemas.py:1-322](file://summer-homework-checkin/backend/app/schemas.py#L1-L322)
 - [points-system/backend/app/routers/users.py:1-192](file://points-system/backend/app/routers/users.py#L1-L192)
 - [points-system/backend/app/routers/points.py:1-28](file://points-system/backend/app/routers/points.py#L1-L28)
 - [points-system/backend/app/routers/convert.py:1-64](file://points-system/backend/app/routers/convert.py#L1-L64)
@@ -543,13 +703,14 @@ LotteryB["lottery.py"] --> SchemasB
 - 并发与锁
   - 兑换与抽奖涉及库存/券数变更，建议在事务内加行级锁或乐观锁，防止超卖
 - 缓存
-  - 奖池、公开奖品列表可短期缓存，降低热点读压力
+  - 奖池、公开奖品列表、挑战任务列表可短期缓存，降低热点读压力
 - 限流
-  - 对打卡、人脸采集、抽奖等高频接口增加速率限制
+  - 对打卡、人脸采集、挑战任务提交、抽奖等高频接口增加速率限制
 - 日志与监控
-  - 记录关键操作（兑换、抽奖、人脸采集）审计日志，便于追踪问题
-
-[本节为通用建议，不涉及具体代码文件]
+  - 记录关键操作（兑换、抽奖、人脸采集、挑战任务审核）审计日志，便于追踪问题
+- 挑战任务优化
+  - 任务解锁状态计算可考虑缓存，减少频繁的时间比较
+  - 批量操作时注意数据库事务的性能影响
 
 ## 故障排查指南
 - 401 未认证
@@ -558,10 +719,12 @@ LotteryB["lottery.py"] --> SchemasB
 - 403 无权限
   - 学生/家长/管理员角色校验失败
   - 家长未绑定目标孩子
+  - 挑战任务接口角色验证失败
 - 400 参数错误
   - 图片校验失败、类别/概率越界、必填字段缺失
+  - 挑战任务提交时任务未完成或已有待审核记录
 - 404 资源不存在
-  - 用户/奖品/兑换记录不存在
+  - 用户/奖品/兑换记录/挑战任务不存在
 - 409 冲突
   - 用户名已存在
 - 常见问题定位
@@ -569,14 +732,17 @@ LotteryB["lottery.py"] --> SchemasB
   - 人脸采集失败：确认照片中仅检测到一张人脸
   - 兑换失败：检查积分余额与奖品库存
   - 抽奖失败：检查剩余抽奖券数量与奖池配置
+  - 挑战任务提交失败：检查任务解锁状态、用户打卡状态、附件格式
+  - 挑战任务审核失败：检查管理员权限、打卡记录存在性、审核操作合法性
 
-章节来源
+**章节来源**
 - [summer-homework-checkin/backend/app/routers/auth.py:40-46](file://summer-homework-checkin/backend/app/routers/auth.py#L40-L46)
 - [summer-homework-checkin/backend/app/routers/prize.py:31-35](file://summer-homework-checkin/backend/app/routers/prize.py#L31-L35)
+- [summer-homework-checkin/backend/app/routers/challenge.py:85-103](file://summer-homework-checkin/backend/app/routers/challenge.py#L85-L103)
 - [points-system/backend/app/routers/users.py:12-15](file://points-system/backend/app/routers/users.py#L12-L15)
 
 ## 结论
-本文档系统化梳理了两个系统的API能力与交互方式，涵盖认证、打卡、人脸、家长绑定、兑换、抽奖、报表与积分账户等核心场景。建议在生产环境结合限流、缓存、事务与审计日志提升稳定性与可观测性。
+本文档系统化梳理了两个系统的API能力与交互方式，涵盖认证、打卡、人脸、家长绑定、兑换、抽奖、报表、挑战任务与积分账户等核心场景。新增的挑战任务系统为学生提供了结构化的学习任务管理，管理员可以进行任务配置和审核管理。建议在生产环境结合限流、缓存、事务与审计日志提升稳定性与可观测性。
 
 ## 附录：认证、数据格式与版本兼容
 - 认证机制
@@ -585,13 +751,15 @@ LotteryB["lottery.py"] --> SchemasB
 - 数据格式规范
   - JSON为主，multipart/form-data用于文件上传
   - 日期时间使用ISO格式
+  - 挑战任务附件使用JSON字符串存储
 - 版本兼容性
   - 应用标题中包含版本号（v1.0.0），后续可通过URL前缀或Header进行版本控制
 - 最佳实践
-  - 幂等设计：对重复提交做幂等处理（如打卡、兑换）
+  - 幂等设计：对重复提交做幂等处理（如打卡、兑换、挑战任务提交）
   - 最小化敏感信息：响应中避免泄露隐私字段
   - 错误信息标准化：保持错误码与消息一致，便于前端统一处理
+  - 挑战任务设计：合理设置任务解锁条件和奖励积分，平衡学习难度与激励效果
 
-章节来源
-- [summer-homework-checkin/backend/app/main.py:11-11](file://summer-homework-checkin/backend/app/main.py#L11-L11)
+**章节来源**
+- [summer-homework-checkin/backend/app/main.py:12-12](file://summer-homework-checkin/backend/app/main.py#L12-L12)
 - [points-system/backend/app/main.py:20-20](file://points-system/backend/app/main.py#L20-L20)
