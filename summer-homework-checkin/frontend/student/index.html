@@ -110,7 +110,7 @@
         <h2>📸 {{ isParent ? '代孩子打卡' : '作业打卡' }}</h2>
         <div class="steps">步骤 1/3：上传作业现场照片</div>
         <label class="uploader" :class="{filled:photoData}">
-          <input type="file" accept="image/*" capture="environment" @change="onPhoto" />
+          <input type="file" accept="image/*" @change="onPhoto" />
           <img v-if="photoData" :src="photoData" class="preview" />
           <div v-else class="ph">点击拍摄 / 选择照片</div>
         </label>
@@ -337,7 +337,7 @@
           <textarea v-model="challengeCheckinContent" placeholder="描述你完成的任务内容..." rows="3"></textarea>
 
           <label class="uploader" :class="{filled:challengePhotoData}">
-            <input type="file" accept="image/*" capture="environment" @change="onChallengePhoto" />
+            <input type="file" accept="image/*" @change="onChallengePhoto" />
             <img v-if="challengePhotoData" :src="challengePhotoData" class="preview" />
             <div v-else class="ph">📷 点击上传完成照片</div>
           </label>

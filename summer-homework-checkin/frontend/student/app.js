@@ -1,5 +1,13 @@
 const { createApp } = Vue;
 
+// 自动检测基础路径（支持子路径部署如 /homework/）
+const BASE_PATH = (() => {
+  const path = window.location.pathname;
+  // 如果路径包含 /homework，则使用 /homework 作为基础路径
+  const match = path.match(/^(\/homework)/);
+  return match ? match[1] : '';
+})();
+
 createApp({
   data() {
     return {
@@ -60,10 +68,18 @@ createApp({
     if (this.token) this.bootstrap();
   },
   methods: {
+    fixUrl(url) {
+      if (!url) return "";
+      if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
+      if (url.startsWith("/uploads/") || url.startsWith("/static/")) {
+        return window.location.origin + BASE_PATH + url;
+      }
+      return window.location.origin + BASE_PATH + "/" + url.replace(/^\.\//, "");
+    },
     async api(path, opts = {}) {
       const headers = { ...(opts.headers || {}) };
       if (this.token) headers["Authorization"] = "Bearer " + this.token;
-      const res = await fetch(path, { ...opts, headers });
+      const res = await fetch(BASE_PATH + path, { ...opts, headers });
       if (res.status === 401) { this.logout(); throw new Error("登录失效"); }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "请求失败");
@@ -227,7 +243,7 @@ createApp({
       try {
         const d = await this.api("/api/face/status");
         this.faceEnrolled = d.face_enrolled;
-        this.faceIdUrl = d.face_id_url;
+        this.faceIdUrl = this.fixUrl(d.face_id_url);
       } catch (e) { /* 忽略 */ }
     },
     async enrollFace() {
@@ -239,7 +255,7 @@ createApp({
         fd.append("photo", this.faceFile);
         const d = await this.api("/api/face/enroll", { method: "POST", body: fd });
         this.faceEnrolled = true;
-        this.faceIdUrl = d.face_id_url || this.faceIdUrl;
+        this.faceIdUrl = this.fixUrl(d.face_id_url) || this.faceIdUrl;
         this.showToast(d.message || "人脸底图采集成功");
         this.faceData = ""; this.faceFile = null;
         await this.loadFaceStatus();

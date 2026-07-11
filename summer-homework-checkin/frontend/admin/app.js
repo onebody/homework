@@ -1,5 +1,12 @@
 const { createApp } = Vue;
 
+// 自动检测基础路径（支持子路径部署如 /homework/）
+const BASE_PATH = (() => {
+  const path = window.location.pathname;
+  const match = path.match(/^(\/homework)/);
+  return match ? match[1] : '';
+})();
+
 createApp({
   data() {
     return {
@@ -70,7 +77,7 @@ createApp({
     async api(path, opts = {}) {
       const headers = { ...(opts.headers || {}) };
       if (this.token) headers["Authorization"] = "Bearer " + this.token;
-      const res = await fetch(path, { ...opts, headers });
+      const res = await fetch(BASE_PATH + path, { ...opts, headers });
       if (res.status === 401) { this.logout(); throw new Error("登录失效"); }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "请求失败");
@@ -659,11 +666,11 @@ function normalizeImg(img) {
 function fixUrl(url) {
   if (!url) return "";
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
-  // 相对路径补全
+  // 相对路径补全（支持子路径部署）
   if (url.startsWith("/uploads/") || url.startsWith("/static/")) {
-    return location.origin + url;
+    return location.origin + BASE_PATH + url;
   }
-  return location.origin + "/" + url.replace(/^\.\//, "");
+  return location.origin + BASE_PATH + "/" + url.replace(/^\.\//, "");
 }
 
 /** 格式化文件大小 */

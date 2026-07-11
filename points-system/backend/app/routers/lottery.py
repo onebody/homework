@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.schemas import LotteryPrizeOut, LotteryDrawOut, DrawResult, DrawRequest
+from app.schemas import LotteryPrizeOut, LotteryDrawOut, DrawResult, DrawRequest, WheelSectorOut
 from app import models
 from app.services import lottery_service
 
@@ -27,6 +27,14 @@ def draw(req: DrawRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="用户不存在")
     result = lottery_service.do_draw(db, req.user_id)
     d = result["draw"]
+    # 将后端返回的扇区字典列表转换为 WheelSectorOut
+    sectors_out = [
+        WheelSectorOut(
+            id=s["id"], name=s["name"],
+            is_win=s["is_win"], weight=s["weight"],
+        )
+        for s in result["sectors"]
+    ]
     return DrawResult(
         draw=LotteryDrawOut(
             id=d.id, user_id=d.user_id, prize_name=d.prize_name,
@@ -34,6 +42,8 @@ def draw(req: DrawRequest, db: Session = Depends(get_db)):
         ),
         lottery_tickets=result["lottery_tickets"],
         can_lottery=result["can_lottery"],
+        sectors=sectors_out,
+        winning_index=result["winning_index"],
     )
 
 

@@ -98,24 +98,60 @@ def do_convert(db: Session, user_id: int, qty: int):
         }
 
 
-def _pick_lottery_prize(db: Session):
-    """按 weight 加权随机选出当前可发放的奖池条目（库存为 None 或 >0 视为可发放）。"""
-    prizes = db.query(models.LotteryPrize).order_by(models.LotteryPrize.sort_order).all()
-    available = [p for p in prizes if p.stock is None or p.stock > 0]
-    if not available:
-        return None
-    total_weight = sum(p.weight for p in available)
+def _build_wheel_sectors(db: Session):
+    """生成转盘扇区：随机 15 个真实奖品 + 随机 3~5 个"谢谢参与"，Fisher-Yates 洗牌。"""
+    # 真实奖品（is_win=1，库存可用）
+    real_prizes = [
+        p for p in db.query(models.LotteryPrize)
+        .filter(models.LotteryPrize.is_win == 1)
+        .all()
+        if p.stock is None or p.stock > 0
+    ]
+    # 随机选取最多 15 个
+    random.shuffle(real_prizes)
+    picked_real = real_prizes[:15]
+
+    # 随机 3~5 个"谢谢参与"
+    thanks_count = random.randint(3, 5)
+    thanks_sectors = [
+        {"id": None, "name": "谢谢参与", "is_win": False, "weight": 2, "stock": None}
+        for _ in range(thanks_count)
+    ]
+
+    # 合并
+    sectors = []
+    for p in picked_real:
+        sectors.append({
+            "id": p.id,
+            "name": p.name,
+            "is_win": True,
+            "weight": max(p.weight, 1),
+            "stock": p.stock,
+        })
+    sectors.extend(thanks_sectors)
+
+    # Fisher-Yates 洗牌
+    for i in range(len(sectors) - 1, 0, -1):
+        j = random.randint(0, i)
+        sectors[i], sectors[j] = sectors[j], sectors[i]
+
+    return sectors
+
+
+def _pick_from_sectors(sectors):
+    """从扇区列表中按权重随机选出一项，返回 (index, sector)。"""
+    total_weight = sum(s["weight"] for s in sectors)
     r = random.uniform(0, total_weight)
     upto = 0
-    for p in available:
-        upto += p.weight
+    for idx, s in enumerate(sectors):
+        upto += s["weight"]
         if r <= upto:
-            return p
-    return available[-1]
+            return idx, s
+    return len(sectors) - 1, sectors[-1]
 
 
 def do_draw(db: Session, user_id: int):
-    """发起一次抽奖：消耗 1 张抽奖券并执行加权随机抽奖。"""
+    """发起一次抽奖：消耗 1 张抽奖券，生成转盘扇区，执行加权随机抽奖。"""
     with _account_lock:
         acc = get_or_create_account(db, user_id)
 
@@ -126,23 +162,30 @@ def do_draw(db: Session, user_id: int):
                 detail=f"抽奖券不足，无法抽奖（需至少 {config.TICKETS_PER_DRAW} 张，当前 {acc.lottery_tickets} 张）",
             )
 
-        # 同事务内：先扣券，再抽奖，保证「扣券」与「抽奖结果落库」原子
+        # 同事务内：先扣券
         acc.lottery_tickets -= config.TICKETS_PER_DRAW
 
-        prize = _pick_lottery_prize(db)
-        if prize is None:
-            # 理论上不会发生（奖池含不限量「谢谢参与」），兜底保护
-            raise HTTPException(status_code=500, detail="奖池暂无可发放奖品")
+        # 生成转盘扇区（15 真实 + 3~5 谢谢参与）
+        sectors = _build_wheel_sectors(db)
 
-        # 有限库存奖品扣库存
-        if prize.stock is not None:
-            prize.stock -= 1
+        # 从扇区中按权重随机选出结果
+        winning_index, winner = _pick_from_sectors(sectors)
+
+        # 如果是真实奖品，扣库存并落库
+        prize = None
+        is_win = winner["is_win"]
+        if is_win and winner["id"] is not None:
+            prize = db.query(models.LotteryPrize).filter(
+                models.LotteryPrize.id == winner["id"]
+            ).first()
+            if prize and prize.stock is not None:
+                prize.stock -= 1
 
         draw = models.LotteryDraw(
             user_id=user_id,
-            prize_id=prize.id,
-            prize_name=prize.name,
-            is_win=prize.is_win,
+            prize_id=winner["id"],
+            prize_name=winner["name"],
+            is_win=1 if is_win else 0,
         )
         db.add(draw)
         db.flush()
@@ -155,7 +198,7 @@ def do_draw(db: Session, user_id: int):
             balance_after=acc.lottery_tickets,
             ref_type="draw",
             ref_id=draw.id,
-            note=f"抽奖消耗 {config.TICKETS_PER_DRAW} 张（{prize.name}）",
+            note=f"抽奖消耗 {config.TICKETS_PER_DRAW} 张（{winner['name']}）",
         ))
 
         try:
@@ -168,6 +211,7 @@ def do_draw(db: Session, user_id: int):
         return {
             "draw": draw,
             "lottery_tickets": acc.lottery_tickets,
-            # 抽奖权限由余额派生：扣到 0 即自动锁定
             "can_lottery": acc.lottery_tickets >= config.TICKETS_PER_DRAW,
+            "sectors": sectors,
+            "winning_index": winning_index,
         }

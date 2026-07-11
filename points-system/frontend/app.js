@@ -42,11 +42,9 @@ function unlockBtn(btn) { btn.disabled = false; btn.textContent = btn.dataset._l
 /* ===== 转盘抽奖 ===== */
 
 // 转盘状态
-var _wheel = null;          // { canvas, ctx, sectors, currentAngle }
-const SECTOR_COUNT = 11;    // 10 个随机奖品 + 1 个"谢谢惠顾"
-const SECTOR_ANGLE = (2 * Math.PI) / SECTOR_COUNT; // ~32.727°
+var _wheel = null;          // { canvas, ctx, sectors, currentAngle, sectorCount, sectorAngle }
 
-// 转盘扇区配色（交替暖色系）
+// 转盘扇区配色（交替暖色系，11 色循环）
 var WHEEL_COLORS = [
   "#FF6B6B", "#4ECDC4", "#FFE66D", "#95E1D3",
   "#F38181", "#AA96DA", "#FCBAD3", "#A8D8EA",
@@ -54,73 +52,32 @@ var WHEEL_COLORS = [
 ];
 
 /**
- * 从奖池中随机取 N 个奖品，补齐到 SECTOR_COUNT-1 个（末位固定为"谢谢惠顾"）
- * 返回 [{ name, isWin, color }, ...]
- */
-function buildSectors(prizePool) {
-  var pool = (prizePool || []).filter(function(p) { return p.name !== "谢谢参与" && p.name !== "谢谢惠顾"; });
-  // 随机打乱并取前 10 个
-  var shuffled = pool.slice().sort(function() { return Math.random() - 0.5; });
-  var picked = shuffled.slice(0, SECTOR_COUNT - 1);
-
-  var sectors = [];
-  for (var i = 0; i < picked.length; i++) {
-    sectors.push({
-      name: picked[i].name,
-      isWin: picked[i].is_win !== 0,   // 奖池中标记为中奖的奖品
-      color: WHEEL_COLORS[i % WHEEL_COLORS.length],
-      prizeId: picked[i].id
-    });
-  }
-  // 最后一个扇区固定：谢谢惠顾
-  sectors.push({
-    name: "谢谢惠顾",
-    isWin: false,
-    color: WHEEL_COLORS[(SECTOR_COUNT - 1) % WHEEL_COLORS.length],
-    prizeId: null
-  });
-
-  // 再打乱一次让"谢谢惠顾"不一定在最后
-  // 但为了视觉美观，保持固定位置也可以——这里选择再随机洗一次
-  // Fisher-Yates 洗牌（保留颜色绑定）
-  for (var j = sectors.length - 1; j > 0; j--) {
-    var r = Math.floor(Math.random() * (j + 1));
-    var tmp = sectors[j]; sectors[j] = sectors[r]; sectors[r] = tmp;
-    // 颜色也跟着换
-    var tc = WHEEL_COLORS[j % WHEEL_COLORS.length];
-    WHEEL_COLORS[j] = WHEEL_COLORS[r % WHEEL_COLORS.length];
-    WHEEL_COLORS[r] = tc;
-    sectors[j].color = WHEEL_COLORS[j % WHEEL_COLORS.length];
-    sectors[r].color = WHEEL_COLORS[r % WHEEL_COLORS.length];
-  }
-
-  return sectors;
-}
-
-/**
- * 在 Canvas 上绘制转盘
+ * 在 Canvas 上绘制转盘（支持动态扇区数量 18~20）
  */
 function drawWheel(sectors, currentAngle) {
   var canvas = document.getElementById("wheelCanvas");
   if (!canvas) return;
   var ctx = canvas.getContext("2d");
-  var cx = 160, cy = 160, r = 150;
+  var size = canvas.width;  // 360
+  var cx = size / 2, cy = size / 2, r = cx - 10;
+  var sectorCount = sectors.length;
+  var sectorAngle = (2 * Math.PI) / sectorCount;
 
-  ctx.clearRect(0, 0, 320, 320);
+  ctx.clearRect(0, 0, size, size);
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(currentAngle || 0);
 
-  for (var i = 0; i < sectors.length; i++) {
-    var start = i * SECTOR_ANGLE;
-    var end = start + SECTOR_ANGLE;
+  for (var i = 0; i < sectorCount; i++) {
+    var start = i * sectorAngle;
+    var end = start + sectorAngle;
 
     // 扇形填充
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.arc(0, 0, r, start, end);
     ctx.closePath();
-    ctx.fillStyle = sectors[i].color;
+    ctx.fillStyle = sectors[i].color || WHEEL_COLORS[i % WHEEL_COLORS.length];
     ctx.fill();
 
     // 扇形边线
@@ -130,18 +87,21 @@ function drawWheel(sectors, currentAngle) {
 
     // 文字标签（沿径向排列）
     ctx.save();
-    ctx.rotate(start + SECTOR_ANGLE / 2); // 扇形中心角
+    ctx.rotate(start + sectorAngle / 2); // 扇形中心角
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 13px -apple-system, 'PingFang SC', sans-serif";
+    // 扇区多时字号缩小
+    var fontSize = sectorCount > 16 ? 10 : 12;
+    ctx.font = "bold " + fontSize + "px -apple-system, 'PingFang SC', sans-serif";
 
     // 文字沿半径方向偏移
     var label = sectors[i].name;
-    if (label.length > 6) label = label.substring(0, 5) + "..";
+    var maxLen = sectorCount > 16 ? 4 : 6;
+    if (label.length > maxLen) label = label.substring(0, maxLen - 1) + "..";
     ctx.shadowColor = "rgba(0,0,0,.3)";
     ctx.shadowBlur = 3;
-    ctx.fillText(label, r - 16, 0);
+    ctx.fillText(label, r - 14, 0);
     ctx.restore();
   }
 
@@ -166,41 +126,46 @@ function drawWheel(sectors, currentAngle) {
 }
 
 /**
- * 初始化 / 刷新转盘数据
+ * 用后端返回的扇区数据初始化/刷新转盘
  */
-function initWheel(prizePool) {
+function initWheel(sectorsData) {
   var canvas = document.getElementById("wheelCanvas");
   if (!canvas) return;
+
+  // 为每个扇区分配颜色
+  var sectors = (sectorsData || []).map(function(s, i) {
+    return {
+      id: s.id,
+      name: s.name,
+      isWin: s.is_win,
+      weight: s.weight,
+      color: WHEEL_COLORS[i % WHEEL_COLORS.length],
+    };
+  });
+
   _wheel = {
     canvas: canvas,
     ctx: canvas.getContext("2d"),
-    sectors: buildSectors(prizePool),
-    currentAngle: (_wheel && _wheel.currentAngle) || 0,  // 保留上次停止角度
+    sectors: sectors,
+    sectorCount: sectors.length,
+    sectorAngle: (2 * Math.PI) / sectors.length,
+    currentAngle: (_wheel && _wheel.currentAngle) || 0,
     spinning: false
   };
   drawWheel(_wheel.sectors, _wheel.currentAngle);
 }
 
 /**
- * 计算目标奖品在当前转盘上的扇区索引
- * 返回 0~10 的索引值
+ * 计算目标扇区在当前转盘上的中心角度
  */
-function findSectorIndex(prizeName) {
+function getSectorCenterAngle(targetIndex) {
   if (!_wheel) return 0;
-  // 精确匹配名称；若不匹配则找"谢谢惠顾"兜底
-  for (var i = 0; i < _wheel.sectors.length; i++) {
-    if (_wheel.sectors[i].name === prizeName) return i;
-  }
-  // 兜底：找第一个非中奖的
-  for (var j = 0; j < _wheel.sectors.length; j++) {
-    if (!_wheel.sectors[j].isWin) return j;
-  }
-  return 0;
+  return targetIndex * _wheel.sectorAngle + _wheel.sectorAngle / 2;
 }
 
 /**
  * 执行转盘旋转动画，停在目标扇区上
- * targetIndex: 目标扇区索引 (0 ~ SECTOR_COUNT-1)
+ * targetIndex: 目标扇区索引
  * callback: 动画结束回调
  */
 function spinTo(targetIndex, callback) {
@@ -210,14 +175,11 @@ function spinTo(targetIndex, callback) {
   var canvas = _wheel.canvas;
   canvas.classList.add("spinning");
 
-  // 目标扇区的中心角度（相对于 12 点方向）
-  // 指针在顶部（-PI/2 方向），需要计算转到什么角度时目标扇区中心对准指针
-  var sectorCenter = targetIndex * SECTOR_ANGLE + SECTOR_ANGLE / 2;
-  // 当前角度基础上，至少转 5 圈 + 目标偏移
-  var extraSpins = 5 + Math.floor(Math.random() * 3); // 5~7 圈
-  // 最终角度 = 当前角度 + extraSpins*2π + (使目标扇区对准顶部的补偿)
-  // 指针在 -π/2（canvas 坐标系 12 点），所以：
-  // 目标扇区中心应转到 -π/2（即 π*3/2）附近
+  // 目标扇区的中心角度
+  var sectorCenter = getSectorCenterAngle(targetIndex);
+  // 至少转 5~7 圈
+  var extraSpins = 5 + Math.floor(Math.random() * 3);
+  // 指针在顶部（-PI/2 方向），计算目标旋转角度
   var targetRotation = _wheel.currentAngle
     + extraSpins * 2 * Math.PI
     + (-Math.PI / 2 - sectorCenter)
@@ -231,24 +193,22 @@ function spinTo(targetIndex, callback) {
   // 应用 CSS transform 触发 transition
   canvas.style.transform = "rotate(" + targetRotation + "rad)";
 
-  // transitionend 回调（transition 时间由 CSS 控制，约 5s）
+  // transitionend 回调
   var onEnd = function(e) {
     if (e.target !== canvas) return;
     canvas.removeEventListener("transitionend", onEnd);
     canvas.classList.remove("spinning");
 
     _wheel.currentAngle = targetRotation % (2 * Math.PI);
-    // 归一化到 [0, 2π)
     if (_wheel.currentAngle < 0) _wheel.currentAngle += 2 * Math.PI;
 
-    // 重绘以同步最终角度
     drawWheel(_wheel.sectors, _wheel.currentAngle);
     _wheel.spinning = false;
 
     if (callback) callback();
   };
 
-  // 备用：如果 transitionend 未触发（某些浏览器问题），用 setTimeout 兜底
+  // 备用兜底
   var fallbackTimer = setTimeout(function() {
     canvas.removeEventListener("transitionend", onEnd);
     canvas.classList.remove("spinning");
@@ -257,7 +217,7 @@ function spinTo(targetIndex, callback) {
     drawWheel(_wheel.sectors, _wheel.currentAngle);
     _wheel.spinning = false;
     if (callback) callback();
-  }, 5500);
+  }, 6500);
 
   var realEnd = function(e) {
     clearTimeout(fallbackTimer);
@@ -353,21 +313,23 @@ function updateConvertUI(d) {
 }
 
 /**
- * 抽奖面板 UI 更新：含转盘初始化
+ * 抽奖面板 UI 更新
  */
 function updateLotteryUI(d) {
   var state = document.getElementById("lotteryState");
   var btn = document.getElementById("drawBtn");
   var hint = document.getElementById("drawHint");
 
-  // 初始化或刷新转盘（使用奖池数据）
-  initWheel(d.lottery_pool || d.prizes || []);
+  // 初始化占位转盘（首次加载时画一个空转盘，实际扇区在抽奖时由后端返回）
+  if (!_wheel) {
+    initWheel([]);
+  }
 
   if (d.can_lottery) {
     state.textContent = "抽奖已解锁！当前持有 " + d.lottery_tickets + " 张，每次消耗 1 张";
     state.className = "lottery-state unlocked";
     btn.disabled = false;
-    hint.textContent = "点击下方按钮转动转盘 🎰";
+    hint.textContent = "点击下方按钮转动转盘 ";
   } else {
     state.textContent = "获取抽奖券即可参与抽奖";
     state.className = "lottery-state";
@@ -378,9 +340,9 @@ function updateLotteryUI(d) {
 
 /**
  * 抽奖主流程：
- * 1. 调用后端 API 获取真实结果
- * 2. 找到对应扇区索引
- * 3. 转盘旋转动画
+ * 1. 调用后端 API 获取转盘扇区 + 中奖结果
+ * 2. 用返回的扇区数据绘制转盘
+ * 3. 转盘旋转动画停在目标扇区
  * 4. 弹出中奖结果
  */
 async function doDraw() {
@@ -389,19 +351,22 @@ async function doDraw() {
 
   lockBtn(btn, "抽奖中...");
   try {
-    // 先调用后端获取真实抽奖结果
+    // 调用后端获取转盘扇区 + 抽奖结果
     var r = await api("/api/lottery/draw", {
       method: "POST",
       body: JSON.stringify({ user_id: currentUser }),
     });
+
+    var sectorsData = r.sectors || [];
+    var winningIndex = r.winning_index != null ? r.winning_index : 0;
     var prizeName = r.draw.prize_name;
     var isWin = r.draw.is_win;
 
-    // 找到目标扇区并旋转
-    var targetIdx = findSectorIndex(prizeName);
+    // 用后端返回的扇区数据重新绘制转盘
+    initWheel(sectorsData);
 
     // 旋转动画完成后显示结果
-    spinTo(targetIdx, function() {
+    spinTo(winningIndex, function() {
       showResult(isWin, prizeName);
       refresh(); // 刷新数据
     });

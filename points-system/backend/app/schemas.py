@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, date
 
 
@@ -140,7 +140,17 @@ class DrawRequest(BaseModel):
     user_id: int
 
 
+class WheelSectorOut(BaseModel):
+    """转盘扇区数据。"""
+    id: Optional[int] = None
+    name: str
+    is_win: bool
+    weight: int
+
+
 class DrawResult(BaseModel):
     draw: LotteryDrawOut
     lottery_tickets: int  # 抽奖后剩余抽奖券数量
     can_lottery: bool     # 是否仍满足抽奖条件（券≥1）
+    sectors: List[WheelSectorOut]  # 本次转盘扇区列表
+    winning_index: int             # 中奖扇区索引
