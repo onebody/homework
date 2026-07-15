@@ -36,6 +36,10 @@ createApp({
       passwordForm: { old_password: "", new_password: "", confirm_password: "" },
       pwdBusy: false,
       drawing: false, drawResult: null,
+      // 抽奖转盘
+      wheelSpinning: false, wheelRotation: 0,
+      // 打卡闯关合并页子 tab
+      ccTab: "checkin",
       mall: { points: 0, lottery_tickets: 0, prizes: [], redemptions: [], lottery_records: [] },
       redeemBusy: false, replaceTarget: null,   // replaceTarget: 正在为其选择替换奖品的兑换记录
       history: [],
@@ -63,6 +67,32 @@ createApp({
       return c ? c.nickname : "孩子";
     },
     points() { return this.mall.points != null ? this.mall.points : (this.streak.points || 0); },
+    // 抽奖转盘分区：由商城奖品（非抽奖券）生成 + 一个“谢谢参与”分区
+    wheelSegments() {
+      const prizes = (this.mall.prizes || [])
+        .filter(p => !p.is_lottery_ticket)
+        .slice(0, 7)
+        .map(p => ({ name: p.name, short: this.shortName(p.name), win: true }));
+      const segs = prizes.slice();
+      segs.push({ name: "谢谢参与", short: "谢谢参与", win: false });
+      // 至少 4 个分区，转盘更好看
+      while (segs.length < 4) segs.splice(segs.length - 1, 0, { name: "神秘奖励", short: "神秘奖励", win: true });
+      return segs;
+    },
+    wheelStyle() {
+      const n = this.wheelSegments.length;
+      const seg = 360 / n;
+      const colors = ["#ffd06b", "#7eb6ff", "#a5e3c0", "#ffb3ba", "#c3a5ff", "#ffd9a0", "#8fd6ff", "#ffc2e2"];
+      const stops = [];
+      for (let i = 0; i < n; i++) {
+        stops.push(`${colors[i % colors.length]} ${i * seg}deg ${(i + 1) * seg}deg`);
+      }
+      return {
+        background: `conic-gradient(${stops.join(",")})`,
+        transform: `rotate(${this.wheelRotation}deg)`,
+        transition: this.wheelSpinning ? "transform 4s cubic-bezier(0.2,0.8,0.25,1)" : "none",
+      };
+    },
   },
   mounted() {
     if (this.token) this.bootstrap();
@@ -208,7 +238,27 @@ createApp({
         if (this.isParent) await this.loadChildHome();
         else await this.loadHome();
       }
-      if (v === "challenge") await this.loadChallengeTasks();
+      if (v === "checkin-challenge") {
+        this.ccTab = "checkin";
+        if (this.isParent) await this.loadChildHome();
+        else await this.loadHome();
+        await this.loadChallengeTasks();
+      }
+    },
+    // 切换到闯关子 tab（数据已在 go() 中预加载，缺失时补加载）
+    async switchToChallenge() {
+      this.ccTab = "challenge";
+      if (!this.challengeTasks.length) await this.loadChallengeTasks();
+    },
+    shortName(name) {
+      const s = (name || "").toString();
+      return s.length > 4 ? s.slice(0, 4) : s;
+    },
+    segLabelStyle(i) {
+      const n = this.wheelSegments.length;
+      const seg = 360 / n;
+      const angle = (i + 0.5) * seg;
+      return { transform: `translateX(-50%) rotate(${angle}deg)` };
     },
     async loadHome() {
       this.streak = await this.api("/api/checkin/streak");
@@ -372,19 +422,38 @@ createApp({
       } catch (e) { this.showToast(e.message); }
     },
 
-    /* ============ 抽奖（与积分并存） ============ */
+    /* ============ 抽奖（转盘） ============ */
     async loadLottery() { await this.loadMall(); },
     async draw() {
-      this.drawing = true; this.drawResult = null;
+      if (this.wheelSpinning) return;
+      if (this.mall.lottery_tickets <= 0) { this.showToast("暂无可用抽奖券，先去连续打卡攻资格吧"); return; }
+      this.wheelSpinning = true; this.drawResult = null; this.drawing = true;
       try {
         const d = this.isParent
           ? await this.api("/api/parent/lottery/" + this.actingChildId + "/draw", { method: "POST" })
           : await this.api("/api/lottery/draw", { method: "POST" });
+        // 定位目标分区：中奖时匹配奖品名，未中奖落在“谢谢参与”
+        const segs = this.wheelSegments;
+        const n = segs.length;
+        const seg = 360 / n;
+        let idx = d.is_win
+          ? segs.findIndex(s => s.win && s.name === d.prize_name)
+          : segs.findIndex(s => !s.win);
+        if (idx < 0) idx = d.is_win ? segs.findIndex(s => s.win) : n - 1;
+        if (idx < 0) idx = 0;
+        // 目标旋转角度：5 圈 + 使目标分区中心对准顶部指针
+        const target = 360 * 5 + (360 - (idx + 0.5) * seg);
+        const base = this.wheelRotation - (this.wheelRotation % 360);
+        this.wheelRotation = base + target;
+        // 等待转盘动画结束
+        await new Promise(r => setTimeout(r, 4100));
         this.drawResult = d;
         this.streak.lottery_tickets = d.tickets_left;
         await this.loadMall();
+        if (d.is_win) this.showToast("🎉 恭喜抽中 " + d.prize_name);
+        else this.showToast("本次未中奖，再接再厉");
       } catch (e) { this.showToast(e.message); }
-      finally { this.drawing = false; }
+      finally { this.wheelSpinning = false; this.drawing = false; }
     },
 
     async loadHistory() {
