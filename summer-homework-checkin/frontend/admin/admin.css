@@ -65,7 +65,7 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
   background:rgba(47,128,237,.7);color:#fff;
   padding:3px 12px;border-radius:12px;font-weight:600;font-size:12px;min-width:52px;text-align:center
 }
-.viewer-caption{color:#a8b9c9;flex:1;overflow:hidden;text-nowrap;text-ellipsis}
+.viewer-caption{color:#a8b9c9;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .viewer-actions{display:flex;align-items:center;gap:4px}
 
 .vbtn{
@@ -163,7 +163,7 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
 }
 .upload-thumb{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0}
 .upload-info{flex:1;min-width:0;display:flex;flex-direction:column}
-.upload-name{font-size:13px;overflow:hidden;text-nowrap;text-ellipsis;color:#e0e6ed}
+.upload-name{font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#e0e6ed}
 .upload-size{font-size:11px;color:#6b7c93}
 .upload-remove{
   width:24px;height:24px;font-size:11px;flex-shrink:0;border-radius:6px;background:transparent!important
@@ -386,3 +386,49 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
 .pwd-card label{display:block;margin-bottom:12px;font-size:13px;color:#555}
 .pwd-actions{display:flex;gap:10px;margin-top:16px}
 .pwd-actions .primary,.pwd-actions .ghost{flex:1}
+
+/* ==================== 数据概览仪表盘 ==================== */
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+.dash-card{background:#fff;border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 4px 12px rgba(0,0,0,.05);border-left:4px solid #2f80ed;transition:transform .15s}
+.dash-card:hover{transform:translateY(-2px)}
+.dash-card.blue{border-color:#2f80ed}.dash-card.green{border-color:#27ae60}.dash-card.purple{border-color:#9b59b6}
+.dash-card.orange{border-color:#e67e22}.dash-card.red{border-color:#e74c3c}.dash-card.teal{border-color:#1abc9c}
+.dash-card.indigo{border-color:#3f51b5}
+.dash-icon{font-size:28px}
+.dash-v{font-size:26px;font-weight:800;color:#2b3a4a}
+.dash-k{font-size:12px;color:#8a99ad;margin-top:2px}
+
+.dash-charts{margin-bottom:20px}
+.chart-card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 4px 12px rgba(0,0,0,.05);margin-bottom:14px}
+.chart-card h3{margin:0 0 12px;font-size:14px;color:#5a6b7e}
+.chart-card.wide{width:100%}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+.dash-quick{background:#fff;border-radius:14px;padding:18px;box-shadow:0 4px 12px rgba(0,0,0,.05);margin-bottom:20px}
+.dash-quick h3{margin:0 0 12px;font-size:14px;color:#5a6b7e}
+.quick-btns{display:flex;flex-wrap:wrap;gap:10px}
+.quick-btn{background:#f0f6ff;color:#2f80ed;border:1px solid #d0e3ff;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;transition:background .15s}
+.quick-btn:hover{background:#dbeafe}
+
+.dash-system{background:#fff;border-radius:14px;padding:18px;box-shadow:0 4px 12px rgba(0,0,0,.05);margin-bottom:20px}
+.dash-system h3{margin:0 0 12px;font-size:14px;color:#5a6b7e}
+.sys-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.sys-item{background:#f7f9fc;border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:4px}
+.sys-k{font-size:11px;color:#8a99ad}
+.sys-v{font-size:15px;font-weight:700;color:#2b3a4a}
+.sys-v.ok{color:#27ae60}
+.warn-text{color:#e74c3c!important}
+.sys-notifications{margin-top:14px}
+.sys-notifications h4{margin:0 0 8px;font-size:13px;color:#5a6b7e}
+.notif-item{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f3f7;font-size:13px}
+.notif-title{color:#2b3a4a}
+.notif-time{font-size:11px}
+
+@media (max-width:768px){
+  .dash-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .dash-card{padding:12px 14px}
+  .dash-v{font-size:22px}
+  .chart-row{grid-template-columns:1fr}
+  .quick-btns{flex-direction:column}
+  .sys-grid{grid-template-columns:repeat(2,1fr)}
+}

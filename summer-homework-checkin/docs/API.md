@@ -115,7 +115,8 @@
 
 | 方法 | 路径 | 认证 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/api/admin/stats` | 管理员 | 概览统计 |
+| GET | `/api/admin/dashboard` | 管理员 | 富统计仪表盘（指标卡片 + 图表数据 + 系统状态） |
+| GET | `/api/admin/stats` | 管理员 | 基础概览统计（兼容旧接口） |
 | GET | `/api/admin/users` | 管理员 | 用户列表 |
 | GET | `/api/admin/checkins` | 管理员 | 打卡列表（含异常标记） |
 | GET | `/api/admin/checkins/pending-count` | 管理员 | 待审核打卡数 |

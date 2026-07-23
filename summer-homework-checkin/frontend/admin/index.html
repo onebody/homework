@@ -6,6 +6,7 @@
   <title>打卡系统 · 后台管理</title>
   <link rel="stylesheet" href="./admin.css" />
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.4.27/vue.global.prod.js"></script>
+  <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 <div id="app" v-cloak>
@@ -45,15 +46,72 @@
     <main class="main">
       <!-- 概览 -->
       <section v-if="view==='dashboard'">
-        <h2>数据概览</h2>
-        <div class="stats" v-if="stats">
-          <div class="stat"><div class="v">{{ stats.students }}</div><div class="k">学生数</div></div>
-          <div class="stat"><div class="v">{{ stats.parents }}</div><div class="k">家长数</div></div>
-          <div class="stat"><div class="v">{{ stats.effective_checkins }}</div><div class="k">有效打卡</div></div>
-          <div class="stat"><div class="v">{{ stats.bindings }}</div><div class="k">绑定关系</div></div>
-          <div class="stat warn"><div class="v">{{ stats.geo_risk_checkins }}</div><div class="k">位置异常打卡</div></div>
+        <div class="bar">
+          <h2>📈 数据概览</h2>
+          <button class="mini" @click="refreshDashboard" :disabled="dashLoading">🔄 刷新</button>
         </div>
-        <p class="muted">暑假统计窗口：{{ stats && stats.summer_window }}</p>
+
+        <!-- 核心指标卡片 -->
+        <div class="dash-grid" v-if="dash">
+          <div class="dash-card blue"><div class="dash-icon">👥</div><div class="dash-body"><div class="dash-v">{{ dash.total_users }}</div><div class="dash-k">总注册用户</div></div></div>
+          <div class="dash-card green"><div class="dash-icon">🔥</div><div class="dash-body"><div class="dash-v">{{ dash.monthly_active }}</div><div class="dash-k">本月活跃用户</div></div></div>
+          <div class="dash-card purple"><div class="dash-icon">📸</div><div class="dash-body"><div class="dash-v">{{ dash.today_checkins }}</div><div class="dash-k">今日新增打卡</div></div></div>
+          <div class="dash-card orange"><div class="dash-icon">💰</div><div class="dash-body"><div class="dash-v">{{ dash.monthly_points_issued }}</div><div class="dash-k">本月积分发放</div></div></div>
+          <div class="dash-card red"><div class="dash-icon">⏳</div><div class="dash-body"><div class="dash-v">{{ dash.pending_checkins }}</div><div class="dash-k">待审核打卡</div></div></div>
+          <div class="dash-card red"><div class="dash-icon">🎁</div><div class="dash-body"><div class="dash-v">{{ dash.pending_redemptions }}</div><div class="dash-k">待处理兑换</div></div></div>
+          <div class="dash-card teal"><div class="dash-icon">🏆</div><div class="dash-body"><div class="dash-v">{{ dash.max_streak_month }}</div><div class="dash-k">最高连续打卡</div></div></div>
+          <div class="dash-card indigo"><div class="dash-icon">📊</div><div class="dash-body"><div class="dash-v">{{ dash.avg_daily_checkins }}</div><div class="dash-k">日均打卡次数</div></div></div>
+        </div>
+
+        <!-- 图表区域 -->
+        <div class="dash-charts" v-if="dash">
+          <div class="chart-card wide">
+            <h3>📈 近 30 天打卡趋势</h3>
+            <canvas ref="trendChart" height="220"></canvas>
+          </div>
+          <div class="chart-row">
+            <div class="chart-card">
+              <h3>👥 用户类型分布</h3>
+              <canvas ref="pieChart" height="200"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>🎁 兑换类别分布</h3>
+              <canvas ref="barChart" height="200"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- 快捷操作 -->
+        <div class="dash-quick" v-if="dash">
+          <h3>⚡ 快捷操作</h3>
+          <div class="quick-btns">
+            <button class="quick-btn" @click="view='checkins'; checkinFilter='pending'; loadCheckins()">📝 待审核打卡 <span class="nav-badge" v-if="dash.pending_checkins>0">{{ dash.pending_checkins }}</span></button>
+            <button class="quick-btn" @click="loadRedeems()">🎁 待处理兑换 <span class="nav-badge" v-if="dash.pending_redemptions>0">{{ dash.pending_redemptions }}</span></button>
+            <button class="quick-btn" @click="view='checkins'; checkinFilter='all'; loadCheckins()">📸 最新打卡记录</button>
+            <button class="quick-btn" @click="exportStats">📄 导出统计数据</button>
+          </div>
+        </div>
+
+        <!-- 系统状态 -->
+        <div class="dash-system" v-if="dash && dash.system">
+          <h3>🖥️ 系统状态</h3>
+          <div class="sys-grid">
+            <div class="sys-item"><span class="sys-k">运行时长</span><span class="sys-v">{{ formatUptime(dash.system.uptime_seconds) }}</span></div>
+            <div class="sys-item"><span class="sys-k">数据库</span><span class="sys-v ok">● {{ dash.system.db_status }}</span></div>
+            <div class="sys-item"><span class="sys-k">有效打卡</span><span class="sys-v">{{ dash.effective_checkins }}</span></div>
+            <div class="sys-item"><span class="sys-k">绑定关系</span><span class="sys-v">{{ dash.bindings }}</span></div>
+            <div class="sys-item"><span class="sys-k">位置异常</span><span class="sys-v" :class="dash.geo_risk_checkins>0?'warn-text':''">{{ dash.geo_risk_checkins }}</span></div>
+          </div>
+          <div class="sys-notifications" v-if="dash.system.notifications.length">
+            <h4>🔔 最新通知</h4>
+            <div class="notif-item" v-for="n in dash.system.notifications" :key="n.id">
+              <span class="notif-title">{{ n.title }}</span>
+              <span class="notif-time muted">{{ n.created_at }}</span>
+            </div>
+          </div>
+        </div>
+
+        <p class="muted">暑假统计窗口：{{ dash && dash.summer_window }}</p>
       </section>
 
       <!-- 奖品管理 -->

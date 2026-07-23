@@ -1,14 +1,19 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
+import time as _time
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
 
-from ..models import User, CheckIn, StudentParent, Redemption, Prize
+from ..models import User, CheckIn, StudentParent, Redemption, Prize, LotteryRecord, Notification
 from ..database import get_db
 from ..schemas import ReviewRequest
-from ..config import SUMMER_START, SUMMER_END
+from ..config import SUMMER_START, SUMMER_END, CHECKIN_POINTS, MAKEUP_POINTS
 from ..deps import require_role
 from ..services import checkin_service
+
+# 服务启动时间（用于计算运行时长）
+_SERVER_START = _time.time()
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -32,6 +37,118 @@ def stats(_: User = Depends(require_role("admin")), db: Session = Depends(get_db
         "redeem_approved": redeem_approved,
         "redeem_rejected": redeem_rejected,
         "summer_window": f"{SUMMER_START} ~ {SUMMER_END}",
+    }
+
+
+@router.get("/dashboard")
+def dashboard(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    """富统计仪表盘：多维度统计 + 图表数据 + 系统状态。"""
+    today = date.today()
+    month_start = today.replace(day=1)
+
+    # ---- 基础统计 ----
+    total_students = db.query(User).filter_by(role="student").count()
+    total_parents = db.query(User).filter_by(role="parent").count()
+    total_users = total_students + total_parents
+
+    # 本月活跃用户（本月有打卡记录的去重用户数）
+    monthly_active = db.query(distinct(CheckIn.user_id)).filter(
+        CheckIn.check_date >= month_start
+    ).count()
+
+    # 今日新增打卡
+    today_checkins = db.query(CheckIn).filter(CheckIn.check_date == today).count()
+
+    # 本月累计积分发放（有效打卡 * 对应积分）
+    month_normal = db.query(CheckIn).filter(
+        CheckIn.check_date >= month_start,
+        CheckIn.is_effective == True,
+        CheckIn.check_type == "normal"
+    ).count()
+    month_makeup = db.query(CheckIn).filter(
+        CheckIn.check_date >= month_start,
+        CheckIn.is_effective == True,
+        CheckIn.check_type == "makeup"
+    ).count()
+    monthly_points_issued = month_normal * CHECKIN_POINTS + month_makeup * MAKEUP_POINTS
+
+    # 待审核打卡 / 待处理兑换
+    pending_checkins = db.query(CheckIn).filter(CheckIn.review_status == "pending").count()
+    pending_redemptions = db.query(Redemption).filter(Redemption.status == "pending").count()
+
+    # 本月最高连续打卡天数
+    max_streak_month = db.query(func.max(User.current_streak)).filter(
+        User.role == "student"
+    ).scalar() or 0
+
+    # 本月平均每日打卡次数
+    days_elapsed = (today - month_start).days + 1
+    month_total_checkins = db.query(CheckIn).filter(
+        CheckIn.check_date >= month_start
+    ).count()
+    avg_daily_checkins = round(month_total_checkins / days_elapsed, 1) if days_elapsed > 0 else 0
+
+    # ---- 图表数据：近 30 天打卡趋势 ----
+    trend = []
+    for i in range(29, -1, -1):
+        d = today - timedelta(days=i)
+        count = db.query(CheckIn).filter(CheckIn.check_date == d).count()
+        trend.append({"date": str(d), "count": count})
+
+    # ---- 图表数据：用户类型分布 ----
+    user_distribution = {
+        "student": total_students,
+        "parent": total_parents,
+        "admin": db.query(User).filter_by(role="admin").count(),
+    }
+
+    # ---- 图表数据：奖品兑换类别分布 ----
+    prize_category_rows = db.query(
+        Prize.category, func.count(Redemption.id)
+    ).join(Redemption, Redemption.prize_id == Prize.id).group_by(Prize.category).all()
+    prize_distribution = {cat: cnt for cat, cnt in prize_category_rows}
+
+    # ---- 系统状态 ----
+    uptime_seconds = int(_time.time() - _SERVER_START)
+    # 最新通知
+    latest_notifications = db.query(Notification).order_by(
+        Notification.created_at.desc()
+    ).limit(5).all()
+    notifications = [
+        {"id": n.id, "title": n.title, "created_at": n.created_at.strftime("%m-%d %H:%M") if n.created_at else ""}
+        for n in latest_notifications
+    ]
+
+    return {
+        # 基础统计
+        "total_users": total_users,
+        "total_students": total_students,
+        "total_parents": total_parents,
+        "monthly_active": monthly_active,
+        "today_checkins": today_checkins,
+        "monthly_points_issued": monthly_points_issued,
+        "pending_checkins": pending_checkins,
+        "pending_redemptions": pending_redemptions,
+        "max_streak_month": max_streak_month,
+        "avg_daily_checkins": avg_daily_checkins,
+        # 原有字段兼容
+        "effective_checkins": db.query(CheckIn).filter(CheckIn.is_effective == True).count(),
+        "bindings": db.query(StudentParent).count(),
+        "geo_risk_checkins": db.query(CheckIn).filter(CheckIn.geo_flag == True).count(),
+        "redeem_pending": pending_redemptions,
+        "redeem_approved": db.query(Redemption).filter(Redemption.status == "fulfilled").count(),
+        "redeem_rejected": db.query(Redemption).filter(Redemption.status == "rejected").count(),
+        "summer_window": f"{SUMMER_START} ~ {SUMMER_END}",
+        # 图表
+        "trend_30d": trend,
+        "user_distribution": user_distribution,
+        "prize_distribution": prize_distribution,
+        # 系统状态
+        "system": {
+            "uptime_seconds": uptime_seconds,
+            "db_status": "connected",
+            "notifications": notifications,
+        },
     }
 
 

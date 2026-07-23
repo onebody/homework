@@ -5,8 +5,8 @@
 # ============================================================================
 # 用法：
 #   ./deploy.sh local      # 本地 Docker 增量更新
-#   ./deploy.sh prod       # 生产服务器 (192.168.1.112) 增量更新
-#   ./deploy.sh prod --no-backup   # 生产更新但跳过备份（不推荐）
+#   DEPLOY_SSH_PASS=xxx ./deploy.sh prod       # 生产服务器增量更新
+#   DEPLOY_SSH_PASS=xxx ./deploy.sh prod --no-backup  # 跳过备份
 # ============================================================================
 
 set -euo pipefail
@@ -67,7 +67,7 @@ deploy_prod() {
 
     SSH_USER="qihang"
     SSH_HOST="192.168.1.112"
-    SSH_PASS="fcj8949008ly813"
+    SSH_PASS="${DEPLOY_SSH_PASS:?请设置环境变量 DEPLOY_SSH_PASS}"
     SSH_PORT="22"
     DEPLOY_DIR="/tmp/summer-homework-checkin"
     DATA_DIR="/var/services/homes/qihang/homework-deploy/data"

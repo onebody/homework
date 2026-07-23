@@ -17,6 +17,7 @@ createApp({
       pwdBusy: false,
       view: "dashboard",
       stats: null, prizes: [], users: [], checkins: [], redeems: [],
+      dash: null, dashLoading: false,
       challengeTasks: [], challengeCheckins: [], viewingCheckinsTask: null,
       editing: null, reviewing: null, reviewingRedeem: null, reviewingChallenge: null,
       challengeEditing: null,
@@ -126,6 +127,110 @@ createApp({
       this.users = await this.api("/api/admin/users");
       await this.loadCheckins();
       await this.loadChallengeTasks();
+      await this.refreshDashboard();
+    },
+    async refreshDashboard() {
+      this.dashLoading = true;
+      try {
+        this.dash = await this.api("/api/admin/dashboard");
+        this.stats = this.dash; // 兼容原有引用
+        this.$nextTick(() => this.renderCharts());
+      } catch (e) { /* 静默失败 */ }
+      finally { this.dashLoading = false; }
+    },
+    renderCharts() {
+      if (!this.dash || typeof Chart === 'undefined') return;
+      // 销毁旧图表
+      if (this._trendChart) { this._trendChart.destroy(); this._trendChart = null; }
+      if (this._pieChart) { this._pieChart.destroy(); this._pieChart = null; }
+      if (this._barChart) { this._barChart.destroy(); this._barChart = null; }
+
+      const trendEl = this.$refs.trendChart;
+      const pieEl = this.$refs.pieChart;
+      const barEl = this.$refs.barChart;
+
+      // 近 30 天打卡趋势折线图
+      if (trendEl && this.dash.trend_30d) {
+        this._trendChart = new Chart(trendEl, {
+          type: 'line',
+          data: {
+            labels: this.dash.trend_30d.map(t => t.date.slice(5)),
+            datasets: [{
+              label: '打卡次数',
+              data: this.dash.trend_30d.map(t => t.count),
+              borderColor: '#2f80ed',
+              backgroundColor: 'rgba(47,128,237,0.1)',
+              fill: true, tension: 0.3, pointRadius: 2,
+            }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+      }
+
+      // 用户类型分布饼图
+      if (pieEl && this.dash.user_distribution) {
+        const ud = this.dash.user_distribution;
+        this._pieChart = new Chart(pieEl, {
+          type: 'doughnut',
+          data: {
+            labels: ['学生', '家长', '管理员'],
+            datasets: [{ data: [ud.student, ud.parent, ud.admin], backgroundColor: ['#2f80ed', '#27ae60', '#e67e22'] }]
+          },
+          options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+      }
+
+      // 奖品兑换类别分布柱状图
+      if (barEl && this.dash.prize_distribution) {
+        const pd = this.dash.prize_distribution;
+        const catMap = { stationery: '文具', outdoor: '户外', interest: '兴趣' };
+        const labels = Object.keys(pd).map(k => catMap[k] || k);
+        const values = Object.values(pd);
+        this._barChart = new Chart(barEl, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{ label: '兑换次数', data: values, backgroundColor: ['#9b59b6', '#1abc9c', '#f39c12'] }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+      }
+    },
+    formatUptime(sec) {
+      if (!sec) return '-';
+      const d = Math.floor(sec / 86400);
+      const h = Math.floor((sec % 86400) / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      if (d > 0) return `${d}天${h}小时`;
+      if (h > 0) return `${h}小时${m}分`;
+      return `${m}分钟`;
+    },
+    exportStats() {
+      if (!this.dash) { this.showToast('无数据可导出'); return; }
+      const d = this.dash;
+      const lines = [
+        '暑假作业打卡系统 - 统计报表',
+        `导出时间: ${new Date().toLocaleString()}`,
+        '---',
+        `总注册用户: ${d.total_users} (学生 ${d.total_students} / 家长 ${d.total_parents})`,
+        `本月活跃用户: ${d.monthly_active}`,
+        `今日新增打卡: ${d.today_checkins}`,
+        `本月积分发放: ${d.monthly_points_issued}`,
+        `待审核打卡: ${d.pending_checkins}`,
+        `待处理兑换: ${d.pending_redemptions}`,
+        `最高连续打卡: ${d.max_streak_month} 天`,
+        `日均打卡次数: ${d.avg_daily_checkins}`,
+        `有效打卡总数: ${d.effective_checkins}`,
+        `绑定关系: ${d.bindings}`,
+        `位置异常: ${d.geo_risk_checkins}`,
+        `统计窗口: ${d.summer_window}`,
+      ];
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `打卡统计_${new Date().toISOString().slice(0,10)}.txt`;
+      a.click();
+      this.showToast('已导出统计报表');
     },
     async loadPendingCount() {
       try {
