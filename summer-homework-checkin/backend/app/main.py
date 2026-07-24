@@ -12,7 +12,7 @@ from . import models  # noqa: F401 确保模型被加载
 from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge
 from .utils.rate_limit import check_rate_limit
 
-app = FastAPI(title="暑假作业打卡系统", version="1.1.0")
+app = FastAPI(title="暑假作业打卡系统", version="1.2.0")
 
 # CORS 中间件（安全加固：收窄方法和头部）
 app.add_middleware(
@@ -56,10 +56,21 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     # 启用 XSS 过滤（兼容旧浏览器）
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    # 内容安全策略：缓解 XSS（限制脚本/样式来源；CDN 依赖与内联样式已显式放行）
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-eval' https://cdn.bootcdn.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.bootcdn.net; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'"
+    )
     # 禁止引用泄露敏感 URL
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # 限制浏览器功能（禁用嵌入等）
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # 限制浏览器功能：允许本站使用定位（防代打卡核心功能），禁用摄像头/麦克风
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)"
     return response
 
 

@@ -14,7 +14,14 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple --trust
 COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 
+# 安全加固：创建非特权用户运行应用，降低容器逃逸影响面。
+# 预建 /data 并赋予属主——命名卷首次创建时会继承该目录的属主，使非 root 用户可写。
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /data \
+    && chown -R appuser:appuser /app /data
+
 WORKDIR /app/backend
+USER appuser
 EXPOSE 8000
 
 # 启动时自动执行：数据库备份 → 迁移 → 种子数据 → 服务

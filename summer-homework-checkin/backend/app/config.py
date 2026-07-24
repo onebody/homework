@@ -28,10 +28,16 @@ if os.environ.get("SUMMER_SECRET"):
     _raw_secret = os.environ["SUMMER_SECRET"]
     # 安全检查：拒绝弱密钥
     _WEAK_SECRETS = {"summer-local-dev-secret", "fallback-secret", "changeme", "secret", "test"}
-    if _raw_secret.lower() in _WEAK_SECRETS or len(_raw_secret) < 16:
+    if _raw_secret.lower() in _WEAK_SECRETS or len(_raw_secret) < 32:
         raise RuntimeError(
             "⛔ SECURITY: SUMMER_SECRET 密钥强度不足！"
             "请使用至少 32 字符的随机字符串，如: openssl rand -hex 32"
+        )
+    # 熵检查：拒绝低多样性密钥（如重复字符 / 字符种类过少）
+    if len(set(_raw_secret)) < 8:
+        raise RuntimeError(
+            "⛔ SECURITY: SUMMER_SECRET 字符多样性不足（疑似重复/弱随机）！"
+            "请使用高熵随机字符串，如: openssl rand -hex 32"
         )
     SECRET = _raw_secret
 elif os.path.exists(_SECRET_FILE):

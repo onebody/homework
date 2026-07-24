@@ -20,6 +20,10 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="用户名长度需为 3-32 个字符")
     if not payload.username.isalnum():
         raise HTTPException(status_code=400, detail="用户名只能包含字母和数字")
+    # 安全加固：昵称长度限制（防止超长内容 / 存储型 XSS 载荷）
+    payload.nickname = (payload.nickname or "").strip()
+    if not payload.nickname or len(payload.nickname) > 20:
+        raise HTTPException(status_code=400, detail="昵称长度需为 1-20 个字符")
     # 安全加固：密码强度校验
     if len(payload.password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(status_code=400, detail=f"密码至少 {MIN_PASSWORD_LENGTH} 位")

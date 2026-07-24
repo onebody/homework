@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from html import escape as _esc
 
 from ..models import CheckIn, LotteryRecord
 
@@ -51,18 +52,23 @@ def build_report(db, student, start: date, end: date) -> dict:
 
 
 def build_html(report: dict) -> str:
-    """生成卡通风格、可打印下载的可视化学习报告 HTML。"""
+    """生成卡通风格、可打印下载的可视化学习报告 HTML。
+
+    安全加固：所有动态插入 HTML 的用户可控内容（昵称、奖品名）均经
+    html.escape() 转义，防止存储型 XSS。
+    """
     max_cnt = max([b["count"] for b in report["weekly_buckets"]] + [1])
     bars = ""
     for b in report["weekly_buckets"]:
         h = int(b["count"] / max_cnt * 120) if max_cnt else 0
         bars += (
             f'<div class="bar-col"><div class="bar" style="height:{h}px"></div>'
-            f'<div class="bar-label">第{b["week"]}周</div>'
-            f'<div class="bar-num">{b["count"]}</div></div>'
+            f'<div class="bar-label">第{int(b["week"])}周</div>'
+            f'<div class="bar-num">{int(b["count"])}</div></div>'
         )
-    wins = "".join(f"<li>🎁 {w['name']}（{w['drawn_at']}）</li>" for w in report["prize_wins"]) or "<li>暂无中奖记录</li>"
+    wins = "".join(f"<li>🎁 {_esc(str(w['name']))}（{_esc(str(w['drawn_at']))}）</li>" for w in report["prize_wins"]) or "<li>暂无中奖记录</li>"
     rate = f"{report['completion_rate'] * 100:.1f}%"
+    nickname = _esc(str(report['nickname']))
 
     css = """
   body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f3faff;color:#2b3a4a;margin:0;padding:24px}
@@ -87,11 +93,11 @@ def build_html(report: dict) -> str:
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{report['nickname']} 的暑假学习报告</title>
+<title>{nickname} 的暑假学习报告</title>
 <style>{css}</style></head>
 <body><div class="card">
-  <h1>🌟 {report['nickname']} 的暑假学习报告</h1>
-  <div class="sub">统计区间：{report['start']} ~ {report['end']}（共 {report['total_days']} 天）</div>
+  <h1>🌟 {nickname} 的暑假学习报告</h1>
+  <div class="sub">统计区间：{_esc(str(report['start']))} ~ {_esc(str(report['end']))}（共 {int(report['total_days'])} 天）</div>
   <div class="grid">
     <div class="stat"><div class="v">{report['checked_days']}</div><div class="k">有效打卡天数</div></div>
     <div class="stat"><div class="v">{rate}</div><div class="k">作业完成率</div></div>

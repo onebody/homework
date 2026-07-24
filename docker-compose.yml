@@ -23,6 +23,8 @@ services:
       # 安全配置（生产环境必须通过 .env 文件或环境变量注入强随机密钥）
       SUMMER_SECRET: ${SUMMER_SECRET:?请在 .env 或环境变量中设置 SUMMER_SECRET}
       ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+      # 初始管理员密码（仅本地测试；未设置则 seed 自动生成随机密码）
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
       # 速率限制（默认开启，测试可设为 0）
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-1}
     volumes:

@@ -57,40 +57,44 @@ def decode_token(token: str):
 
 def encrypt_face_embedding(embedding_json: str) -> str:
     """加密人脸特征向量（512 维浮点数组的 JSON 字符串）。
-    使用 AES-CTR 模式加密，返回 Base64 编码的密文。
+    使用 AES-GCM 认证加密（同时保证机密性与完整性），返回 Base64 编码的密文。
+    格式: nonce(12) + ciphertext + tag(16)。
     """
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-    from cryptography.hazmat.backends import default_backend
-    import struct
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    # 生成随机 IV（16 字节）
-    iv = os.urandom(16)
-    # 使用 AES-CTR 模式（无需填充，适合任意长度数据）
-    cipher = Cipher(
-        algorithms.AES(bytes.fromhex(FACE_ENCRYPT_KEY)),
-        modes.CTR(iv),
-        backend=default_backend()
-    )
-    encryptor = cipher.encryptor()
-    plaintext = embedding_json.encode("utf-8")
-    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
-    # 格式: iv(16) + ciphertext
-    encrypted = iv + ciphertext
-    return base64.b64encode(encrypted).decode("ascii")
+    key = bytes.fromhex(FACE_ENCRYPT_KEY)  # 16 字节 -> AES-128
+    nonce = os.urandom(12)  # GCM 推荐 96 位 nonce
+    aesgcm = AESGCM(key)
+    ciphertext = aesgcm.encrypt(nonce, embedding_json.encode("utf-8"), None)
+    return base64.b64encode(nonce + ciphertext).decode("ascii")
 
 
 def decrypt_face_embedding(encrypted_b64: str) -> str:
-    """解密人脸特征向量，返回原始 JSON 字符串。"""
+    """解密人脸特征向量，返回原始 JSON 字符串。
+    依次尝试 AES-GCM（新格式）→ AES-CTR（旧格式），保证向后兼容。
+    篡改的 GCM 密文会因认证失败而抛出异常（完整性保护）。
+    """
+    key = bytes.fromhex(FACE_ENCRYPT_KEY)
+    data = base64.b64decode(encrypted_b64)
+
+    # 新格式：AES-GCM（nonce[12] + ciphertext + tag[16]）
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    if len(data) >= 12 + 16:
+        try:
+            nonce, ct = data[:12], data[12:]
+            return AESGCM(key).decrypt(nonce, ct, None).decode("utf-8")
+        except Exception:
+            pass  # 非 GCM 格式或认证失败，回退旧格式
+
+    # 旧格式：AES-CTR（iv[16] + ciphertext），仅用于解密历史数据
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
-
-    encrypted = base64.b64decode(encrypted_b64)
-    if len(encrypted) < 17:
+    if len(data) < 17:
         raise ValueError("加密数据格式错误")
-    iv = encrypted[:16]
-    ciphertext = encrypted[16:]
+    iv = data[:16]
+    ciphertext = data[16:]
     cipher = Cipher(
-        algorithms.AES(bytes.fromhex(FACE_ENCRYPT_KEY)),
+        algorithms.AES(key),
         modes.CTR(iv),
         backend=default_backend()
     )
