@@ -3,6 +3,7 @@
 <cite>
 **本文引用的文件**   
 - [docker-compose.yml](file://docker-compose.yml)
+- [scripts/deploy.sh](file://scripts/deploy.sh)
 - [points-system/Dockerfile](file://points-system/Dockerfile)
 - [summer-homework-checkin/Dockerfile](file://summer-homework-checkin/Dockerfile)
 - [points-system/.dockerignore](file://points-system/.dockerignore)
@@ -28,11 +29,10 @@
 
 ## 更新摘要
 **变更内容**   
-- 增强了暑假作业打卡系统的Docker容器化部署流程，引入完整的Alembic数据库迁移系统
-- Dockerfile的CMD命令从直接执行seed.py改为运行migrate.py，确保数据库迁移在应用启动前完成
-- 新增智能数据库备份机制，在每次启动前自动备份现有数据库
-- .dockerignore文件已更新以排除数据库文件、备份目录和其他敏感文件
-- 完善了启动流程，支持增量迁移、版本管理和回滚操作
+- **安全增强**：移除了docker-compose.yml和deploy.sh中的回退密钥机制，强制要求所有敏感配置必须通过环境变量显式提供
+- **部署流程改进**：删除了自动生成的随机密钥功能，确保生产环境使用固定且安全的密钥配置
+- **配置验证**：新增环境变量验证机制，在容器启动前检查必需的环境变量是否已正确设置
+- **文档更新**：更新了环境变量配置指南，强调生产环境的安全最佳实践
 
 ## 目录
 1. [简介](#简介)
@@ -51,11 +51,12 @@
 - 暑假作业打卡系统（summer-homework-checkin）：面向三年级学生的日常打卡、人脸比对、抽奖与报表等。
 - 打卡积分兑换系统（points-system）：基于打卡的积分获取、奖品兑换与抽奖功能。
 
-通过 Docker 与 docker-compose，可在本地一键构建镜像、启动服务、挂载持久化卷，并暴露健康检查端点用于编排与健康探测。**最新更新**：暑假作业打卡系统引入了完整的Alembic数据库迁移系统，增强了生产环境的部署安全性和可维护性。
+通过 Docker 与 docker-compose，可在本地一键构建镜像、启动服务、挂载持久化卷，并暴露健康检查端点用于编排与健康探测。**重要安全更新**：部署流程现已移除所有回退密钥机制，强制要求所有敏感配置必须通过环境变量显式提供，确保生产环境的部署安全性。
 
 ## 项目结构
 从容器化视角，关键文件分布如下：
 - 顶层编排：docker-compose.yml
+- 部署脚本：scripts/deploy.sh
 - 应用镜像定义：各项目的 Dockerfile 与 .dockerignore
 - 运行时配置：环境变量注入数据库路径、上传目录、密钥与 CORS 白名单
 - 数据持久化：Docker Compose volumes 映射到 /data
@@ -65,6 +66,7 @@
 graph TB
 subgraph "编排层"
 DC["docker-compose.yml"]
+DS["deploy.sh"]
 end
 subgraph "服务: summer-homework"
 SH_DK["summer-homework-checkin/Dockerfile"]
@@ -89,6 +91,7 @@ PS_VOL["volumes: points-data:/data"]
 end
 DC --> SH_DK
 DC --> PS_DK
+DS --> DC
 SH_DK --> SH_CFG
 SH_DK --> SH_DB
 SH_DK --> SH_MAIN
@@ -106,11 +109,13 @@ PS_DK --> PS_VOL
 
 **图示来源**
 - [docker-compose.yml:1-59](file://docker-compose.yml#L1-L59)
+- [scripts/deploy.sh:1-100](file://scripts/deploy.sh#L1-L100)
 - [summer-homework-checkin/Dockerfile:1-22](file://summer-homework-checkin/Dockerfile#L1-L22)
 - [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-L22)
 
 **章节来源**
 - [docker-compose.yml:1-59](file://docker-compose.yml#L1-L59)
+- [scripts/deploy.sh:1-100](file://scripts/deploy.sh#L1-L100)
 - [summer-homework-checkin/Dockerfile:1-22](file://summer-homework-checkin/Dockerfile#L1-L22)
 - [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-L22)
 
@@ -122,7 +127,8 @@ PS_DK --> PS_VOL
   - **更新** 启动命令：先执行 migrate.py 进行数据库备份、迁移和种子数据初始化，再启动 uvicorn 监听 8000 端口。
 - 运行配置
   - 数据库路径 DB_PATH 与上传目录 UPLOAD_DIR 通过环境变量重定向至持久化卷 /data。
-  - 安全密钥 SUMMER_SECRET 支持三层回退机制：环境变量 → 持久化文件 → 自动生成，CORS 白名单 ALLOWED_ORIGINS 支持环境变量覆盖。
+  - **安全更新** SUMMER_SECRET 不再支持回退机制，必须通过环境变量显式配置，确保生产环境的安全性。
+  - CORS 白名单 ALLOWED_ORIGINS 支持环境变量覆盖。
 - 数据持久化
   - 使用 Docker Compose 的 named volumes 将 /data 持久化，避免容器重建导致数据丢失。
   - **新增** 自动数据库备份机制，在每次启动前将现有数据库备份到 backups 目录。
@@ -146,13 +152,14 @@ SH["summer-homework<br/>容器:8000"]
 PS["points-system<br/>容器:8000(宿主机:8001)"]
 VolSH["volume: summer-data:/data"]
 VolPS["volume: points-data:/data"]
-SecretFile[".secret_key<br/>持久化密钥"]
+EnvVars["环境变量配置<br/>SUMMER_SECRET, ALLOWED_ORIGINS等"]
 BackupDir["backups/<br/>数据库备份"]
 Client --> |http://localhost:8000| SH
 Client --> |http://localhost:8001| PS
 SH --> VolSH
 PS --> VolPS
-SH --> SecretFile
+SH --> EnvVars
+PS --> EnvVars
 SH --> BackupDir
 ```
 
@@ -179,10 +186,9 @@ SH --> BackupDir
   - 幂等种子数据：确保演示数据只初始化一次，避免重复插入。
 - 运行配置与环境变量
   - DB_PATH、UPLOAD_DIR 指向 /data 下的持久化位置。
-  - SUMMER_SECRET 实现三层回退机制：
-    1. 优先级最高：环境变量 SUMMER_SECRET
-    2. 次级回退：持久化文件 .secret_key
-    3. 最终回退：自动生成随机密钥并保存到 .secret_key
+  - **安全更新** SUMMER_SECRET 现在必须通过环境变量显式配置，不再支持任何回退机制：
+    - 必须设置：`export SUMMER_SECRET=your-secure-secret-key`
+    - 不再支持：自动生成随机密钥或从文件读取
   - ALLOWED_ORIGINS 控制跨域来源，支持逗号分隔的多个域名。
   - 其他可调参数：GEO_THRESHOLD_METERS、MAX_MAKEUP_PER_MONTH、FACE_MATCH_THRESHOLD、FACE_MODE_ON_ENROLLED 等。
 - 路由与静态资源
@@ -257,7 +263,7 @@ Uvicorn --> API["注册业务路由"]
 
 **图示来源**
 - [points-system/Dockerfile:20-22](file://points-system/Dockerfile#L20-L22)
-- [points-system/backend/app/main.py:32-39](file://points-system/backend/app/main.py#L32-L39)
+- [points-system/backend/app/main.py:32-39](file://points-system/backend/app/main.py#L32-39)
 - [points-system/backend/seed.py:38-87](file://points-system/backend/seed.py#L38-87)
 
 **章节来源**
@@ -298,13 +304,13 @@ L --> O["alembic/versions/"]
 - [summer-homework-checkin/backend/requirements.docker.txt:1-15](file://summer-homework-checkin/backend/requirements.docker.txt#L1-15)
 - [summer-homework-checkin/backend/requirements.txt:1-11](file://summer-homework-checkin/backend/requirements.txt#L1-11)
 - [points-system/backend/requirements.txt:1-8](file://points-system/backend/requirements.txt#L1-8)
-- [summer-homework-checkin/.dockerignore:1-21](file://summer-homework-checkin/.dockerignore#L1-21)
+- [summer-homework-checkin/.dockerignore:1-21](file://summer-homework-checkin/.dockerignore#L1-L21)
 - [points-system/.dockerignore:1-13](file://points-system/.dockerignore#L1-L13)
 
 **章节来源**
 - [summer-homework-checkin/Dockerfile:1-22](file://summer-homework-checkin/Dockerfile#L1-22)
 - [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-L22)
-- [summer-homework-checkin/backend/requirements.docker.txt:1-15](file://summer-homework-checkin/backend/requirements.docker.txt#L1-15)
+- [summer-homework-checkin/backend/requirements.docker.txt:1-15](file://summer-homework-checkin/backend/requirements.docker.txt#L1-L15)
 - [summer-homework-checkin/backend/requirements.txt:1-11](file://summer-homework-checkin/backend/requirements.txt#L1-L11)
 - [points-system/backend/requirements.txt:1-8](file://points-system/backend/requirements.txt#L1-L8)
 - [summer-homework-checkin/.dockerignore:1-21](file://summer-homework-checkin/.dockerignore#L1-L21)
@@ -336,10 +342,11 @@ L --> O["alembic/versions/"]
 - 权限与路径
   - 确认 DB_PATH 与 UPLOAD_DIR 指向的 /data 子目录存在并可写。
   - 检查 .dockerignore 是否误排除了必要文件。
-- 安全密钥问题
-  - 如果 Token 验证失败，检查 SUMMER_SECRET 环境变量是否正确设置。
-  - 查看 .secret_key 文件是否存在且可读，确保密钥一致性。
-  - 生产环境务必通过环境变量设置固定密钥，避免自动生成的随机密钥导致服务重启后认证失效。
+- **安全更新** 环境变量配置问题
+  - **重要** SUMMER_SECRET 现在必须通过环境变量显式配置，不再支持任何回退机制。
+  - 如果服务启动失败，检查是否设置了 `SUMMER_SECRET` 环境变量。
+  - 使用 `docker-compose config` 验证环境变量是否正确加载。
+  - 在生产环境中，建议使用 `.env` 文件或容器编排平台的环境变量管理功能。
 - **新增** 数据库迁移问题
   - 检查 migrate.py 的执行日志，确认备份和迁移步骤是否正常完成。
   - 查看 alembic_version 表记录，确认迁移版本是否正确标记。
@@ -355,12 +362,18 @@ L --> O["alembic/versions/"]
 - [summer-homework-checkin/backend/migrate.py:1-158](file://summer-homework-checkin/backend/migrate.py#L1-L158)
 
 ## 结论
-本项目通过标准化的 Dockerfile 与 docker-compose 编排，实现了两个独立应用的快速本地部署与演示。**最新更新**：暑假作业打卡系统引入了完整的 Alembic 数据库迁移系统和增强的启动流程，显著提升了生产环境的部署安全性和可维护性。新的迁移系统支持增量 schema 更新、版本管理和智能容错，配合自动数据库备份机制，为数据安全和业务连续性提供了有力保障。借助环境变量与持久化卷，既保证了开发体验，也为生产环境的可扩展性预留了空间。建议在正式环境中：
+本项目通过标准化的 Dockerfile 与 docker-compose 编排，实现了两个独立应用的快速本地部署与演示。**重大安全更新**：部署流程现已完全移除了回退密钥机制，强制要求所有敏感配置必须通过环境变量显式提供，显著提升了生产环境的部署安全性和合规性。新的安全策略确保了：
+- 所有密钥必须显式配置，杜绝自动生成的随机密钥
+- 环境变量验证机制防止未配置的敏感信息
+- 符合企业级安全最佳实践和审计要求
+
+配合完整的 Alembic 数据库迁移系统和增强的启动流程，为数据安全和业务连续性提供了有力保障。建议在正式环境中：
 - 将 SQLite 替换为更健壮的数据库（PostgreSQL/MySQL）。
 - 使用多 worker 与反向代理提升吞吐与稳定性。
-- 在生产环境通过环境变量设置固定的 SUMMER_SECRET，避免使用自动生成的随机密钥。
+- **必须** 在生产环境通过环境变量设置固定的 SUMMER_SECRET，禁止使用任何回退机制。
 - 定期检查和清理 backups 目录中的历史备份文件。
 - 按需启用人脸识别依赖，并确保模型下载策略与网络安全。
+- 实施环境变量管理的最佳实践，使用密钥管理服务或配置文件模板。
 
 ## 附录
 - 常用命令
@@ -370,17 +383,24 @@ L --> O["alembic/versions/"]
   - **新增** 手动执行迁移：docker exec -it <container_name> python migrate.py --migrate
   - **新增** 仅执行种子数据：docker exec -it <container_name> python migrate.py --seed
   - **新增** 仅备份数据库：docker exec -it <container_name> python migrate.py --backup
+  - **新增** 验证环境变量：docker-compose config
 - 访问地址
   - 暑假作业打卡系统：http://localhost:8000/ 与 http://localhost:8000/admin/
   - 打卡积分兑换系统：http://localhost:8001/
-- 环境变量配置示例
+- **安全更新** 环境变量配置示例
   ```bash
-  # 创建 .env 文件用于生产环境
-  SUMMER_SECRET=your-production-secret-key-here
+  # 创建 .env 文件用于生产环境（必须包含所有必需的环境变量）
+  SUMMER_SECRET=your-production-secure-secret-key-here
   ALLOWED_ORIGINS=https://your-domain.com,https://www.your-domain.com
   GEO_THRESHOLD_METERS=1500
   MAX_MAKEUP_PER_MONTH=3
   FACE_MATCH_THRESHOLD=0.4
+  
+  # 验证环境变量配置
+  docker-compose config
+  
+  # 启动服务
+  docker-compose up -d
   ```
 
 **章节来源**
