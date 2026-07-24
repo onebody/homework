@@ -56,7 +56,7 @@ python seed.py
 uvicorn app.main:app --reload
 ```
 
-- 学生端：http://localhost:8000/student/
+- 学生端：http://localhost:8000/
 - 管理端：http://localhost:8000/admin/
 - 默认账号：admin / admin123
 
