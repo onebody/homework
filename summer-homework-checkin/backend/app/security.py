@@ -5,7 +5,7 @@ import os
 import time
 import base64
 
-from .config import SECRET, TOKEN_EXPIRE_DAYS
+from .config import SECRET, TOKEN_EXPIRE_DAYS, FACE_ENCRYPT_KEY
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -51,3 +51,49 @@ def decode_token(token: str):
         return payload
     except Exception:
         return None
+
+
+# ── 人脸特征向量加密（保护生物特征数据）────────────────────────────────────
+
+def encrypt_face_embedding(embedding_json: str) -> str:
+    """加密人脸特征向量（512 维浮点数组的 JSON 字符串）。
+    使用 AES-CTR 模式加密，返回 Base64 编码的密文。
+    """
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    import struct
+
+    # 生成随机 IV（16 字节）
+    iv = os.urandom(16)
+    # 使用 AES-CTR 模式（无需填充，适合任意长度数据）
+    cipher = Cipher(
+        algorithms.AES(bytes.fromhex(FACE_ENCRYPT_KEY)),
+        modes.CTR(iv),
+        backend=default_backend()
+    )
+    encryptor = cipher.encryptor()
+    plaintext = embedding_json.encode("utf-8")
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+    # 格式: iv(16) + ciphertext
+    encrypted = iv + ciphertext
+    return base64.b64encode(encrypted).decode("ascii")
+
+
+def decrypt_face_embedding(encrypted_b64: str) -> str:
+    """解密人脸特征向量，返回原始 JSON 字符串。"""
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+
+    encrypted = base64.b64decode(encrypted_b64)
+    if len(encrypted) < 17:
+        raise ValueError("加密数据格式错误")
+    iv = encrypted[:16]
+    ciphertext = encrypted[16:]
+    cipher = Cipher(
+        algorithms.AES(bytes.fromhex(FACE_ENCRYPT_KEY)),
+        modes.CTR(iv),
+        backend=default_backend()
+    )
+    decryptor = cipher.decryptor()
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    return plaintext.decode("utf-8")

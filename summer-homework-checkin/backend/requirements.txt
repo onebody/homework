@@ -2,6 +2,8 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 SQLAlchemy==2.0.35
+# 安全加固：人脸特征向量加密
+cryptography==43.0.1
 # 人脸识别（1:1 本人比对）
 insightface==0.7.3
 onnxruntime==1.19.2

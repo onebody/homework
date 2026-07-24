@@ -25,7 +25,15 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # 未设置环境变量时，自动生成随机密钥（仅首次启动，后续需保持一致）
 _SECRET_FILE = os.path.join(BASE_DIR, ".secret_key")
 if os.environ.get("SUMMER_SECRET"):
-    SECRET = os.environ["SUMMER_SECRET"]
+    _raw_secret = os.environ["SUMMER_SECRET"]
+    # 安全检查：拒绝弱密钥
+    _WEAK_SECRETS = {"summer-local-dev-secret", "fallback-secret", "changeme", "secret", "test"}
+    if _raw_secret.lower() in _WEAK_SECRETS or len(_raw_secret) < 16:
+        raise RuntimeError(
+            "⛔ SECURITY: SUMMER_SECRET 密钥强度不足！"
+            "请使用至少 32 字符的随机字符串，如: openssl rand -hex 32"
+        )
+    SECRET = _raw_secret
 elif os.path.exists(_SECRET_FILE):
     with open(_SECRET_FILE, "r") as f:
         SECRET = f.read().strip()
@@ -43,12 +51,24 @@ else:
         RuntimeWarning,
         stacklevel=2,
     )
-TOKEN_EXPIRE_DAYS = 30
+
+# Token 有效期（天）—— 安全加固：缩短至 7 天
+TOKEN_EXPIRE_DAYS = int(os.environ.get("TOKEN_EXPIRE_DAYS", "7"))
+
+# 密码安全策略
+MIN_PASSWORD_LENGTH = int(os.environ.get("MIN_PASSWORD_LENGTH", "8"))
+
+# 人脸特征向量加密密钥（从 SECRET 派生，避免额外配置）
+import hashlib
+FACE_ENCRYPT_KEY = hashlib.sha256(("face-encrypt:" + SECRET).encode()).hexdigest()[:32]
 
 # CORS 允许的来源（生产环境请设置为实际域名）
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS", "http://localhost:8000,http://localhost:8001,http://127.0.0.1:8000"
 ).split(",")
+# CORS 允许的方法和头（安全加固：收窄范围）
+ALLOWED_METHODS = os.environ.get("ALLOWED_METHODS", "GET,POST,PUT,DELETE,OPTIONS").split(",")
+ALLOWED_HEADERS = os.environ.get("ALLOWED_HEADERS", "Authorization,Content-Type,Accept").split(",")
 
 # 暑假全周期（用于报表默认统计窗口）
 SUMMER_START = date(2026, 7, 1)

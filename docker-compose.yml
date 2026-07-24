@@ -20,8 +20,8 @@ services:
       # 数据库与上传目录重定向到持久化卷
       DB_PATH: /data/app.db
       UPLOAD_DIR: /data/uploads
-      # 安全配置（生产环境请更换为随机字符串，或通过 .env 文件注入）
-      SUMMER_SECRET: ${SUMMER_SECRET:-summer-local-dev-secret}
+      # 安全配置（生产环境必须通过 .env 文件或环境变量注入强随机密钥）
+      SUMMER_SECRET: ${SUMMER_SECRET:?请在 .env 或环境变量中设置 SUMMER_SECRET}
       ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
       # 速率限制（默认开启，测试可设为 0）
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-1}

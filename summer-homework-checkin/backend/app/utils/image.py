@@ -1,5 +1,14 @@
-"""轻量图像解析（不依赖 Pillow）：校验真实照片并提取尺寸，用于防代打卡场景合规校验。"""
+"""轻量图像解析（不依赖 Pillow）：校验真实照片并提取尺寸，用于防代打卡场景合规校验。
+
+安全加固：
+- 严格检查文件魔数（magic bytes），仅允许 JPEG/PNG
+- 检测并拒绝包含可执行代码的文件（如 SVG 中的 script 标签）
+- 限制最大尺寸防止资源耗尽攻击
+"""
 from ..config import MIN_PHOTO_BYTES, MIN_PHOTO_DIM, PHOTO_MAX_BYTES
+
+# 安全加固：限制最大图像尺寸（防止资源耗尽）
+MAX_IMAGE_DIM = 8000  # 最大宽度/高度
 
 
 def _parse_jpeg_size(data: bytes):
@@ -49,12 +58,42 @@ def inspect_image(data: bytes):
 
 
 def validate_photo(data: bytes):
-    """场景合规基础校验：体积与尺寸门槛，过滤占位图/缩略图。"""
+    """场景合规基础校验：体积与尺寸门槛，过滤占位图/缩略图。
+    
+    安全加固：
+    - 检查文件魔数，仅允许 JPEG/PNG
+    - 检测 SVG 伪装（XML 头部 + script 标签）
+    - 限制最大尺寸防止资源耗尽
+    """
+    if not data:
+        return False, "未收到文件数据"
+    
+    # 安全加固：检查文件魔数（magic bytes）
+    magic = data[:8]
+    is_jpeg = magic[:2] == b"\xff\xd8"
+    is_png = magic[:8] == b"\x89PNG\r\n\x1a\n"
+    
+    if not is_jpeg and not is_png:
+        # 检测是否伪装成图片的 SVG 或其他格式
+        if data[:5] in (b"<?xml", b"<svg ", b"<svg>"):
+            return False, "不允许上传 SVG 文件"
+        if data[:4] == b"<html" or data[:5] == b"<!DOC":
+            return False, "不允许上传 HTML 文件"
+        return False, "文件格式不支持，仅允许 JPEG 和 PNG"
+    
+    # 体积与尺寸门槛
     if not (MIN_PHOTO_BYTES <= len(data) <= PHOTO_MAX_BYTES):
-        return False, "照片体积不符合要求（需大于 5KB 且小于 10MB）"
+        return False, f"照片体积不符合要求（需大于 {MIN_PHOTO_BYTES//1024}KB 且小于 {PHOTO_MAX_BYTES//1024//1024}MB）"
+    
     ok, w, h, fmt = inspect_image(data)
     if not ok:
         return False, "文件不是有效的 JPEG/PNG 图像"
+    
+    # 安全加固：限制最大尺寸
+    if w > MAX_IMAGE_DIM or h > MAX_IMAGE_DIM:
+        return False, f"照片尺寸过大（{w}x{h}），请上传合理尺寸的照片"
+    
     if w < MIN_PHOTO_DIM or h < MIN_PHOTO_DIM:
         return False, f"照片尺寸过小（{w}x{h}），请上传清晰现场照片"
+    
     return True, f"{fmt} {w}x{h}"

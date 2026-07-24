@@ -108,12 +108,19 @@ deploy_prod() {
 
     # 6. 启动新容器（挂载原有数据卷）
     log_info "启动新容器（挂载原有数据）..."
+    # 检查密钥文件是否存在
+    if ! sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+        "test -f $DATA_DIR/.secret_key"; then
+        log_error "生产服务器缺少密钥文件: $DATA_DIR/.secret_key"
+        log_error "请先在服务器上生成密钥: openssl rand -hex 32 > $DATA_DIR/.secret_key"
+        exit 1
+    fi
     sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
         "echo '$SSH_PASS' | sudo -S docker run -d --name summer-homework --restart unless-stopped \
             -p 6565:8000 \
             -e DB_PATH=/data/app.db \
             -e UPLOAD_DIR=/data/uploads \
-            -e SUMMER_SECRET=\$(cat $DATA_DIR/.secret_key 2>/dev/null || echo 'fallback-secret') \
+            -e SUMMER_SECRET=\$(cat $DATA_DIR/.secret_key) \
             -e ALLOWED_ORIGINS=http://192.168.1.112:6565,http://localhost:6565 \
             -v $DATA_DIR:/data \
             summer-homework-img 2>&1"

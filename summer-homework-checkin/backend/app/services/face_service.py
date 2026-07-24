@@ -10,6 +10,7 @@
 - 模型首次调用时按需下载到 ~/.insightface；若环境无 insightface 或下载失败，
   服务自动降级为「模型不可用」，已采集底图的账号在比对失败时会得到明确提示，
   而不会静默放行（防代打卡不被绕过）。
+- 安全加固：人脸特征向量使用 AES-CTR 加密后存储，保护生物特征数据。
 """
 import os
 import json
@@ -19,6 +20,7 @@ import numpy as np
 
 from ..config import FACE_MATCH_THRESHOLD, FACE_DET_SIZE, FACE_MODEL_NAME
 from ..utils.storage import save_upload, public_url
+from ..security import encrypt_face_embedding, decrypt_face_embedding
 
 _lock = threading.Lock()
 _analyzer = None
@@ -79,7 +81,9 @@ def enroll(user, image_bytes, db):
                 "message": "检测到多张人脸，请单独拍摄孩子本人正脸照"}
     path = save_upload(image_bytes, user.id, "face")
     user.face_id_path = path
-    user.face_embedding = json.dumps(emb.tolist())
+    # 安全加固：加密存储人脸特征向量
+    embedding_json = json.dumps(emb.tolist())
+    user.face_embedding = encrypt_face_embedding(embedding_json)
     user.face_enrolled = True
     db.commit()
     return {"ok": True, "has_face": True, "face_count": 1,
@@ -111,7 +115,18 @@ def verify(user, image_bytes):
         return {"status": "multiple_faces", "match": False, "score": None,
                 "has_face": True, "face_count": count,
                 "message": "检测到多张人脸，请单独拍摄"}
-    ref = np.array(json.loads(user.face_embedding), dtype=np.float32)
+    # 安全加固：解密人脸特征向量
+    try:
+        decrypted_json = decrypt_face_embedding(user.face_embedding)
+        ref = np.array(json.loads(decrypted_json), dtype=np.float32)
+    except Exception:
+        # 兼容旧数据：尝试直接解析（未加密的旧格式）
+        try:
+            ref = np.array(json.loads(user.face_embedding), dtype=np.float32)
+        except Exception:
+            return {"status": "mismatch", "match": False, "score": None,
+                    "has_face": True, "face_count": 1,
+                    "message": "人脸数据解密失败，请重新采集人脸底图"}
     sim = float(np.dot(ref, emb_b) /
                 (np.linalg.norm(ref) * np.linalg.norm(emb_b) + 1e-8))
     match = sim >= FACE_MATCH_THRESHOLD

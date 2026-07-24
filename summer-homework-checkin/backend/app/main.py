@@ -3,20 +3,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 
-from .config import UPLOAD_DIR, STUDENT_DIR, ADMIN_DIR, ALLOWED_ORIGINS
+from .config import (
+    UPLOAD_DIR, STUDENT_DIR, ADMIN_DIR,
+    ALLOWED_ORIGINS, ALLOWED_METHODS, ALLOWED_HEADERS
+)
 from .database import engine
 from . import models  # noqa: F401 确保模型被加载
 from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge
 from .utils.rate_limit import check_rate_limit
 
-app = FastAPI(title="暑假作业打卡系统", version="1.0.0")
+app = FastAPI(title="暑假作业打卡系统", version="1.1.0")
 
+# CORS 中间件（安全加固：收窄方法和头部）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=ALLOWED_METHODS,
+    allow_headers=ALLOWED_HEADERS,
 )
 
 app.include_router(auth.router)
@@ -40,6 +44,23 @@ async def rate_limit_middleware(request: Request, call_next):
     except HTTPException as e:
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
     return await call_next(request)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """添加安全响应头，防止常见 Web 攻击。"""
+    response = await call_next(request)
+    # 防止点击劫持
+    response.headers["X-Frame-Options"] = "DENY"
+    # 防止 MIME 类型嗅探
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # 启用 XSS 过滤（兼容旧浏览器）
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # 禁止引用泄露敏感 URL
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # 限制浏览器功能（禁用嵌入等）
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 
 @app.get("/api/health")

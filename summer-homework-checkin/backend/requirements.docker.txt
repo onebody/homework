@@ -12,3 +12,5 @@ pydantic==2.9.2
 numpy==1.26.4
 pillow==10.4.0
 alembic==1.13.2
+# 安全加固：人脸特征向量加密
+cryptography==43.0.1

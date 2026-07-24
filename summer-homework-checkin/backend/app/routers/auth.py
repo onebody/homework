@@ -6,6 +6,7 @@ from ..models import User, StudentParent
 from ..schemas import UserRegister, UserLogin, UserOut, TokenOut, PasswordChangeRequest
 from ..security import hash_password, verify_password, create_token
 from ..deps import get_current_user
+from ..config import MIN_PASSWORD_LENGTH
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -14,6 +15,14 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def register(payload: UserRegister, db: Session = Depends(get_db)):
     if payload.role not in ("student", "parent"):
         raise HTTPException(status_code=400, detail="角色仅支持 student / parent")
+    # 安全加固：用户名长度和字符限制
+    if len(payload.username) < 3 or len(payload.username) > 32:
+        raise HTTPException(status_code=400, detail="用户名长度需为 3-32 个字符")
+    if not payload.username.isalnum():
+        raise HTTPException(status_code=400, detail="用户名只能包含字母和数字")
+    # 安全加固：密码强度校验
+    if len(payload.password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"密码至少 {MIN_PASSWORD_LENGTH} 位")
     if db.query(User).filter_by(username=payload.username).first():
         raise HTTPException(status_code=400, detail="用户名已存在")
     pw_hash, pw_salt = hash_password(payload.password)
@@ -57,8 +66,9 @@ def me(user: User = Depends(get_current_user)):
 def change_password(payload: PasswordChangeRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not verify_password(payload.old_password, user.password_hash, user.password_salt or ""):
         raise HTTPException(status_code=400, detail="原密码错误")
-    if len(payload.new_password) < 4:
-        raise HTTPException(status_code=400, detail="新密码至少 4 位")
+    # 安全加固：使用配置的最小密码长度
+    if len(payload.new_password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"新密码至少 {MIN_PASSWORD_LENGTH} 位")
     pw_hash, pw_salt = hash_password(payload.new_password)
     user.password_hash = pw_hash
     user.password_salt = pw_salt

@@ -10,9 +10,13 @@ from fastapi import Request, HTTPException
 _RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "1") == "1"
 
 # 配置：(路径前缀, 最大请求数, 时间窗口秒数)
+# 安全加固：扩展覆盖更多敏感接口
 _RATE_LIMIT_RULES: list[tuple[str, int, int]] = [
-    ("/api/auth/login", 10, 60),       # 每分钟最多 10 次登录
-    ("/api/auth/register", 5, 60),     # 每分钟最多 5 次注册
+    ("/api/auth/login", 10, 60),         # 每分钟最多 10 次登录
+    ("/api/auth/register", 5, 60),       # 每分钟最多 5 次注册
+    ("/api/auth/password", 5, 300),      # 每 5 分钟最多 5 次密码修改
+    ("/api/face/enroll", 5, 300),        # 每 5 分钟最多 5 次人脸采集
+    ("/api/checkin", 30, 60),            # 每分钟最多 30 次打卡请求
 ]
 
 _lock = Lock()
