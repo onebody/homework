@@ -6,6 +6,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from .database import Base
+from .utils.timeutil import now_local
 
 
 class User(Base):
@@ -41,7 +42,7 @@ class User(Base):
     points = Column(Integer, default=0)                 # 积分余额（打卡获得，用于兑换奖品）
     last_7_milestone = Column(Integer, default=0)       # 已解锁的 7 的倍数里程碑
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=now_local)
 
     checkins = relationship("CheckIn", back_populates="user", cascade="all, delete-orphan")
     lottery_records = relationship("LotteryRecord", back_populates="user")
@@ -62,7 +63,7 @@ class StudentParent(Base):
     id = Column(Integer, primary_key=True)
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=now_local)
 
     student = relationship("User", foreign_keys=[student_id], back_populates="bindings_as_student")
     parent = relationship("User", foreign_keys=[parent_id], back_populates="bindings_as_parent")
@@ -75,7 +76,7 @@ class CheckIn(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     check_date = Column(Date, nullable=False, index=True)     # 所打卡对应的自然日
-    check_time = Column(DateTime, default=lambda: datetime.now(timezone.utc))    # 精确提交时间
+    check_time = Column(DateTime, default=now_local)    # 精确提交时间
     photo_path = Column(String(256), nullable=False)          # 相对 UPLOAD_DIR 的路径
     location_lat = Column(Float, nullable=True)
     location_lng = Column(Float, nullable=True)
@@ -91,7 +92,7 @@ class CheckIn(Base):
     review_status = Column(String(16), default="pending")    # pending|approved|rejected
     review_note = Column(String(256), nullable=True)         # 审核备注
     is_effective = Column(Boolean, default=True)              # 是否计入有效打卡
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=now_local)
 
     user = relationship("User", back_populates="checkins")
 
@@ -121,7 +122,7 @@ class Prize(Base):
     image_url = Column(String(256), nullable=True)
     is_preset = Column(Boolean, default=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=now_local)
 
 
 class LotteryRecord(Base):
@@ -133,7 +134,7 @@ class LotteryRecord(Base):
     prize_id = Column(Integer, ForeignKey("prizes.id"), nullable=True)
     prize_name = Column(String(128), nullable=True)
     is_win = Column(Boolean, default=False)
-    drawn_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    drawn_at = Column(DateTime, default=now_local)
 
     user = relationship("User", back_populates="lottery_records")
     prize = relationship("Prize")
@@ -148,7 +149,7 @@ class Redemption(Base):
     prize_id = Column(Integer, ForeignKey("prizes.id"), nullable=False)
     prize_name = Column(String(128), nullable=False)
     cost_points = Column(Integer, default=0)            # 兑换时扣减的积分
-    redeemed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    redeemed_at = Column(DateTime, default=now_local)
     status = Column(String(16), default="pending")      # pending|fulfilled|replaced|cancelled
     replaced_by = Column(Integer, ForeignKey("redemptions.id"), nullable=True)  # 被替换后指向新记录
     note = Column(String(256), nullable=True)
@@ -173,7 +174,7 @@ class Notification(Base):
     content = Column(Text, nullable=True)
     read = Column(Boolean, default=False)
     related_id = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=now_local)
 
 
 class ChallengeTask(Base):
@@ -189,7 +190,7 @@ class ChallengeTask(Base):
     unlock_at = Column(DateTime, nullable=True)
     unlock_condition = Column(String(256), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=now_local)
 
 
 class ChallengeCheckIn(Base):
@@ -205,8 +206,49 @@ class ChallengeCheckIn(Base):
     review_note = Column(String(256), nullable=True)
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=now_local)
 
     user = relationship("User", foreign_keys=[user_id])
     task = relationship("ChallengeTask")
     reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+
+class SiteConfig(Base):
+    """站点通用配置（单行表，管理员在后台维护）。"""
+    __tablename__ = "site_config"
+
+    id = Column(Integer, primary_key=True)
+    student_title = Column(String(64), nullable=True)       # 学生端页面标题（空=默认标题）
+    student_slogan = Column(String(128), nullable=True)      # 学生端登录页欢迎标语（空=默认标语）
+    updated_at = Column(DateTime, default=now_local)
+
+
+class PushConfig(Base):
+    """Webhook 消息推送配置（单行表，管理员在后台维护）。"""
+    __tablename__ = "push_config"
+
+    id = Column(Integer, primary_key=True)
+    enabled = Column(Boolean, default=False)                # 推送总开关
+    dingtalk_url = Column(String(512), nullable=True)       # 钉钉机器人 Webhook URL
+    wechat_url = Column(String(512), nullable=True)         # 企业微信机器人 Webhook URL
+    push_on_submitted = Column(Boolean, default=True)       # 推送：打卡提交（待审核）
+    push_on_approved = Column(Boolean, default=False)       # 推送：审核通过
+    push_on_rejected = Column(Boolean, default=False)       # 推送：审核拒绝
+    rate_limit_per_min = Column(Integer, default=20)        # 每分钟最大推送条数，0=不限
+    public_base_url = Column(String(256), nullable=True)    # 公网访问基址（用于拼照片链接，可选）
+    outgoing_token = Column(String(128), nullable=True)     # 钉钉 Outgoing 验签 Token（双向消息）
+    allow_bot_review = Column(Boolean, default=False)       # 允许群内通过机器人审核打卡
+    updated_at = Column(DateTime, default=now_local)
+
+
+class PushLog(Base):
+    """Webhook 推送历史（不存 Webhook URL，避免敏感信息落日志）。"""
+    __tablename__ = "push_logs"
+
+    id = Column(Integer, primary_key=True)
+    channel = Column(String(16), nullable=False)             # dingtalk|wechat
+    event_type = Column(String(16), nullable=False)          # submitted|approved|rejected|test
+    title = Column(String(256), nullable=True)               # 推送消息摘要
+    status = Column(String(16), nullable=False)              # success|failed|skipped
+    error = Column(String(512), nullable=True)               # 失败/跳过原因
+    created_at = Column(DateTime, default=now_local, index=True)

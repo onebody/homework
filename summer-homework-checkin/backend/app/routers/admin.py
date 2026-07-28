@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
 
-from ..models import User, CheckIn, StudentParent, Redemption, Prize, LotteryRecord, Notification
+from ..models import User, CheckIn, StudentParent, Redemption, Prize, LotteryRecord, Notification, PushLog
 from ..database import get_db
-from ..schemas import ReviewRequest
+from ..schemas import ReviewRequest, PushConfigIn, PushConfigOut, PushLogOut, PushTestRequest, SiteConfigIn, SiteConfigOut
 from ..config import SUMMER_START, SUMMER_END, CHECKIN_POINTS, MAKEUP_POINTS
 from ..deps import require_role
+from ..utils.timeutil import now_local
 from ..services import checkin_service
+from ..services import webhook_push_service
 
 # 服务启动时间（用于计算运行时长）
 _SERVER_START = _time.time()
@@ -301,7 +303,7 @@ def review_redemption(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     
-    now = datetime.now(timezone.utc)
+    now = now_local()
     
     if req.status == "approved":
         r.status = "fulfilled"
@@ -328,3 +330,76 @@ def review_redemption(
         "reviewed_at": now.strftime("%Y-%m-%d %H:%M"),
         "reviewed_by": admin_user.nickname,
     }
+
+
+@router.get("/site-config", response_model=SiteConfigOut)
+def get_site_config(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    """获取站点配置（仅管理员可见）。"""
+    from .site import get_or_create_site_config
+    return get_or_create_site_config(db)
+
+
+@router.put("/site-config", response_model=SiteConfigOut)
+def save_site_config(req: SiteConfigIn, _: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    """保存站点配置：标题限 64 字、标语限 128 字，置空则恢复默认值。"""
+    from .site import get_or_create_site_config
+    title = (req.student_title or "").strip()
+    if len(title) > 64:
+        raise HTTPException(status_code=400, detail="标题最长 64 个字符")
+    slogan = (req.student_slogan or "").strip()
+    if len(slogan) > 128:
+        raise HTTPException(status_code=400, detail="欢迎标语最长 128 个字符")
+    cfg = get_or_create_site_config(db)
+    cfg.student_title = title or None
+    cfg.student_slogan = slogan or None
+    cfg.updated_at = now_local()
+    db.commit()
+    db.refresh(cfg)
+    return cfg
+
+
+@router.get("/push-config", response_model=PushConfigOut)
+def get_push_config(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    """获取推送配置（仅管理员可见）。"""
+    return webhook_push_service.get_config(db)
+
+
+@router.put("/push-config", response_model=PushConfigOut)
+def save_push_config(req: PushConfigIn, _: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    """保存推送配置，非空 Webhook URL 需通过前缀校验。"""
+    for channel, url in (("dingtalk", req.dingtalk_url), ("wechat", req.wechat_url)):
+        if url:
+            err = webhook_push_service.validate_webhook_url(channel, url.strip())
+            if err:
+                raise HTTPException(status_code=400, detail=err)
+    cfg = webhook_push_service.get_config(db)
+    cfg.enabled = req.enabled
+    cfg.dingtalk_url = (req.dingtalk_url or "").strip() or None
+    cfg.wechat_url = (req.wechat_url or "").strip() or None
+    cfg.push_on_submitted = req.push_on_submitted
+    cfg.push_on_approved = req.push_on_approved
+    cfg.push_on_rejected = req.push_on_rejected
+    cfg.rate_limit_per_min = max(0, req.rate_limit_per_min)
+    cfg.public_base_url = (req.public_base_url or "").strip() or None
+    cfg.outgoing_token = (req.outgoing_token or "").strip() or None
+    cfg.allow_bot_review = req.allow_bot_review
+    cfg.updated_at = now_local()
+    db.commit()
+    db.refresh(cfg)
+    return cfg
+
+
+@router.post("/push-config/test")
+def test_push(req: PushTestRequest, _: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    """向指定渠道发送一条测试消息，验证 Webhook URL 可用性。"""
+    if req.channel not in ("dingtalk", "wechat"):
+        raise HTTPException(status_code=400, detail="channel 必须是 dingtalk 或 wechat")
+    err = webhook_push_service.send_test(db, req.channel)
+    return {"ok": err is None, "error": err}
+
+
+@router.get("/push-logs", response_model=list[PushLogOut])
+def push_logs(limit: int = 50, _: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    """推送历史倒序列表。"""
+    limit = min(max(1, limit), 200)
+    return db.query(PushLog).order_by(PushLog.id.desc()).limit(limit).all()

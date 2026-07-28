@@ -26,6 +26,14 @@ createApp({
       pendingCount: 0, redeemPendingCount: 0, challengePendingCount: 0,
       toast: "", toastTimer: null,
 
+      // ========== 消息推送配置 ==========
+      pushConfig: null,       // 推送配置表单
+      siteConfig: null,       // 系统设置表单
+      siteSaving: false,      // 系统设置保存中
+      pushLogs: [],           // 推送历史
+      pushTesting: "",        // 正在测试的渠道（dingtalk|wechat）
+      pushSaving: false,      // 保存中
+
       // ========== 图片查看器 ==========
       viewer: {
         visible: false,          // 弹窗是否显示
@@ -62,6 +70,10 @@ createApp({
     // 是否第一张 / 最后一张
     isFirst() { return this.viewer.index <= 0; },
     isLast() { return this.viewer.index >= this.imageCount - 1; },
+    // 钉钉 Outgoing 回调地址（展示用，随部署域名/子路径自适应）
+    outgoingUrl() {
+      return window.location.origin + BASE_PATH + "/api/dingtalk/outgoing";
+    },
     // 手机端顶栏：当前模块中文名
     currentViewName() {
       return {
@@ -71,6 +83,7 @@ createApp({
         redeems: "兑换审核",
         checkins: "打卡审核",
         challenges: "闯关任务",
+        push: "推送配置",
         password: "修改密码",
       }[this.view] || "";
     },
@@ -127,6 +140,76 @@ createApp({
         this.passwordForm = { old_password: "", new_password: "", confirm_password: "" };
       } catch (e) { this.showToast(e.message); }
       finally { this.pwdBusy = false; }
+    },
+    /* ==================== 系统设置 ==================== */
+    async openSite() {
+      this.view = "site";
+      try { this.siteConfig = await this.api("/api/admin/site-config"); }
+      catch (e) { this.showToast(e.message); }
+    },
+    async saveSiteConfig() {
+      if (!this.siteConfig) return;
+      this.siteSaving = true;
+      try {
+        this.siteConfig = await this.api("/api/admin/site-config", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            student_title: this.siteConfig.student_title,
+            student_slogan: this.siteConfig.student_slogan,
+          }),
+        });
+        this.showToast("系统设置已保存，学生端刷新即生效");
+      } catch (e) { this.showToast(e.message); }
+      finally { this.siteSaving = false; }
+    },
+    /* ==================== 消息推送配置 ==================== */
+    async openPush() {
+      this.view = "push";
+      await this.loadPushConfig();
+      await this.loadPushLogs();
+    },
+    async loadPushConfig() {
+      try { this.pushConfig = await this.api("/api/admin/push-config"); }
+      catch (e) { this.showToast(e.message); }
+    },
+    async savePushConfig() {
+      if (!this.pushConfig) return;
+      this.pushSaving = true;
+      try {
+        this.pushConfig = await this.api("/api/admin/push-config", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(this.pushConfig),
+        });
+        this.showToast("推送配置已保存");
+      } catch (e) { this.showToast(e.message); }
+      finally { this.pushSaving = false; }
+    },
+    async testPush(channel) {
+      // 先保存再测试，确保测的是界面上填的 URL
+      this.pushTesting = channel;
+      try {
+        await this.savePushConfig();
+        const d = await this.api("/api/admin/push-config/test", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel }),
+        });
+        this.showToast(d.ok ? "✅ 测试消息发送成功" : "❌ 测试失败：" + (d.error || "未知错误"));
+        await this.loadPushLogs();
+      } catch (e) { this.showToast(e.message); }
+      finally { this.pushTesting = ""; }
+    },
+    async loadPushLogs() {
+      try { this.pushLogs = await this.api("/api/admin/push-logs?limit=50"); }
+      catch (e) { this.showToast(e.message); }
+    },
+    pushStatusLabel(s) {
+      return { success: "成功", failed: "失败", skipped: "跳过" }[s] || s;
+    },
+    pushEventLabel(t) {
+      return { submitted: "提交待审", approved: "审核通过", rejected: "审核拒绝", test: "测试", command: "群指令" }[t] || t;
+    },
+    pushChannelLabel(c) {
+      return { dingtalk: "钉钉", wechat: "企微" }[c] || c;
     },
     async loadAll() {
       this.stats = await this.api("/api/admin/stats");

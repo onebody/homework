@@ -91,6 +91,27 @@ location /homework/ {
 
 ## 五、镜像更新流程
 
+### 5.1 增量部署脚本（推荐，v1.3）
+
+```bash
+# 在 hanghang_WS/ 根目录
+# 本地：备份数据库 → 重建镜像（保留数据卷）→ 健康检查
+bash scripts/deploy.sh local
+
+# 生产：SSH 传输代码 → 自动备份数据库 → 重建容器（保留数据目录）→ 健康检查
+# 连接信息与 CORS 白名单均由环境变量注入，不硬编码
+DEPLOY_SSH_HOST=<生产主机IP> DEPLOY_SSH_USER=<用户> DEPLOY_SSH_PASS=<密码> \
+  DEPLOY_ALLOWED_ORIGINS=<CORS白名单> bash scripts/deploy.sh prod
+```
+
+注意：
+- 部署前自动备份 SQLite（本地 `.backups/local/`、生产 `data/backups/`），可回滚。
+- 容器启动时自动执行 Alembic 迁移（当前迁移链 001→002 推送表→003 时区平移→004 标语列），无需手动干预。
+- 脚本健康检查窗口为 10s，而迁移+启动约需 15s，若报「验证失败」需人工复核（`docker ps` + 迁移日志 + `/api/health`）。
+- 容器时区已固定 `TZ=Asia/Shanghai`（Dockerfile），应用层时间戳统一为北京时间。
+
+### 5.2 手动 Compose 更新
+
 ```bash
 # 1. 重建并滚动更新（数据卷不受影响）
 docker compose up -d --build

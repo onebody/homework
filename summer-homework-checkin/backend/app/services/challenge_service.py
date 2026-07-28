@@ -3,27 +3,28 @@ from datetime import datetime, date, timezone
 from sqlalchemy.orm import Session
 
 from ..models import ChallengeTask, ChallengeCheckIn, User, Notification
+from ..utils.timeutil import now_local
 
 
-def _make_aware(dt: datetime) -> datetime:
-    """确保 datetime 带时区信息（统一为 UTC）。"""
+def _make_naive(dt: datetime) -> datetime:
+    """统一为 naive 北京时间（管理员输入的 unlock_at 本身即本地时间）。"""
     if dt is None:
         return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
     return dt
 
 
 def is_task_unlocked(task: ChallengeTask, now: datetime = None) -> bool:
     """判断任务是否已开放。"""
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = now_local()
     # 管理员手动开放
     if task.status == "active":
         return True
     # 定时自动开放
     if task.status == "scheduled" and task.unlock_at:
-        unlock_at = _make_aware(task.unlock_at)
+        unlock_at = _make_naive(task.unlock_at)
         if now >= unlock_at:
             return True
     return False
@@ -31,7 +32,7 @@ def is_task_unlocked(task: ChallengeTask, now: datetime = None) -> bool:
 
 def get_student_task_status(db: Session, task: ChallengeTask, user_id: int) -> dict:
     """获取学生对某任务的状态。"""
-    now = datetime.now(timezone.utc)
+    now = now_local()
     unlocked = is_task_unlocked(task, now)
 
     latest = db.query(ChallengeCheckIn).filter(
@@ -113,7 +114,7 @@ def list_tasks_for_student(db: Session, user_id: int) -> list:
     """获取学生端任务列表（按排序顺序）。"""
     tasks = db.query(ChallengeTask).order_by(ChallengeTask.sort_order).all()
     result = []
-    now = datetime.now(timezone.utc)
+    now = now_local()
     for task in tasks:
         status_info = get_student_task_status(db, task, user_id)
         unlocked = is_task_unlocked(task, now)
@@ -198,7 +199,7 @@ def review_checkin(db: Session, checkin: ChallengeCheckIn, action: str, note: st
     if action == "approve":
         checkin.review_status = "approved"
         checkin.reviewed_by = admin_id
-        checkin.reviewed_at = datetime.now(timezone.utc)
+        checkin.reviewed_at = now_local()
         if note:
             checkin.review_note = note
         # 发放积分
@@ -218,7 +219,7 @@ def review_checkin(db: Session, checkin: ChallengeCheckIn, action: str, note: st
     elif action == "reject":
         checkin.review_status = "rejected"
         checkin.reviewed_by = admin_id
-        checkin.reviewed_at = datetime.now(timezone.utc)
+        checkin.reviewed_at = now_local()
         checkin.review_note = note or "审核未通过"
         n = Notification(
             user_id=checkin.user_id,

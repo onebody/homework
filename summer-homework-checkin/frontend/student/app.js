@@ -12,6 +12,8 @@ createApp({
   data() {
     return {
       view: "login",
+      siteTitle: "暑假作业打卡平台",   // 页面标题（后台可配置，未配置时用默认值）
+      siteSlogan: "每天进步一点点，打卡赢好礼！",   // 登录页欢迎标语（同上）
       authMode: "login",
       regRole: "student",
       form: { username: "", nickname: "", password: "" },
@@ -95,9 +97,22 @@ createApp({
     },
   },
   mounted() {
+    this.loadSiteTitle();
     if (this.token) this.bootstrap();
   },
   methods: {
+    async loadSiteTitle() {
+      // 公开接口无需登录；no-store 保证后台改标题后刷新即生效
+      try {
+        const res = await fetch(BASE_PATH + "/api/site-config", { cache: "no-store" });
+        const d = await res.json();
+        if (d && d.student_title) {
+          this.siteTitle = d.student_title;
+          document.title = d.student_title;
+        }
+        if (d && d.student_slogan) this.siteSlogan = d.student_slogan;
+      } catch (e) { /* 取不到时保持默认标题 */ }
+    },
     fixUrl(url) {
       if (!url) return "";
       if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;

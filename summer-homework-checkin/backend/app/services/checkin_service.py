@@ -7,6 +7,8 @@ from ..config import MAX_MAKEUP_PER_MONTH, FACE_MODE_ON_ENROLLED, CHECKIN_POINTS
 from ..utils.storage import save_upload
 from .verification_service import verify_checkin
 from .notify_service import notify, notify_parents_of_student
+from .webhook_push_service import push_checkin_event
+from ..utils.timeutil import now_local
 
 
 def _streaks(dates):
@@ -124,7 +126,7 @@ def create_checkin(db, user, photo_bytes, lat, lng, check_type, reason, proof_by
     ci = CheckIn(
         user_id=user.id,
         check_date=check_date,
-        check_time=datetime.now(timezone.utc),
+        check_time=now_local(),
         photo_path=photo_path,
         location_lat=lat,
         location_lng=lng,
@@ -160,6 +162,9 @@ def create_checkin(db, user, photo_bytes, lat, lng, check_type, reason, proof_by
         ci.id,
     )
 
+    # Webhook 推送（钉钉/企微，后台异步，不影响主流程）
+    push_checkin_event(ci.id, "submitted")
+
     return ci, ver
 
 
@@ -188,6 +193,7 @@ def approve_checkin(db, ci, note=None):
         f"你于 {ci.check_time.strftime('%Y-%m-%d %H:%M')} 的打卡已审核通过，当前积分 {user.points}。",
         ci.id,
     )
+    push_checkin_event(ci.id, "approved")
     return ci
 
 
@@ -206,6 +212,7 @@ def reject_checkin(db, ci, note=None):
         f"你于 {ci.check_time.strftime('%Y-%m-%d %H:%M')} 的打卡未通过审核。" + (f"原因：{note}" if note else ""),
         ci.id,
     )
+    push_checkin_event(ci.id, "rejected")
     return ci
 
 

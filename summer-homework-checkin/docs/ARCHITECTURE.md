@@ -76,7 +76,7 @@ backend/app/
 ├── main.py          # 入口：中间件、路由挂载、静态托管、健康检查
 ├── config.py        # 全部配置项（阈值/窗口/限额），支持环境变量覆盖
 ├── database.py      # SQLAlchemy 引擎与会话
-├── models.py        # 9 张 ORM 表
+├── models.py        # 12 张 ORM 表（含 PushConfig/PushLog/SiteConfig 配置表）
 ├── schemas.py       # Pydantic 出入参模型
 ├── security.py      # 密码哈希（每用户盐）+ HMAC 签名 Token
 ├── deps.py          # 鉴权依赖（当前用户 / 角色校验）
@@ -87,10 +87,12 @@ backend/app/
 │   ├── prize.py        奖品：查询 + 管理端 CRUD
 │   ├── redeem.py       商城：积分兑换/替换
 │   ├── parent.py       家长：绑定/解绑/代打卡/代兑换/通知/报表
-│   ├── admin.py        管理：统计/用户/打卡审核/兑换审核
+│   ├── admin.py        管理：统计/用户/打卡审核/兑换审核/推送配置/站点配置
 │   ├── challenge.py    闯关：任务/打卡/管理端任务管理
 │   ├── report.py       报表：JSON + HTML 可视化
-│   └── face.py         人脸：采集/状态/撤销
+│   ├── face.py         人脸：采集/状态/撤销
+│   ├── site.py         站点配置：公开读取标题/标语（登录前可用，服务端兜底默认值）
+│   └── dingtalk_bot.py 钉钉机器人 Outgoing 回调（验签 + 指令分发）
 ├── services/        # 业务逻辑（可测、无 HTTP 依赖）
 │   ├── checkin_service.py       打卡校验、连续天数计算、积分/抽奖发放
 │   ├── lottery_service.py       加权随机抽奖 + 中奖建单
@@ -98,13 +100,16 @@ backend/app/
 │   ├── verification_service.py  照片/地理/人脸综合风险判定
 │   ├── face_service.py          insightface 特征提取与比对（降级安全模式）
 │   ├── challenge_service.py     闯关任务与打卡
-│   ├── report_service.py        学习报告聚合
-│   └── notify_service.py        站内通知（学生/家长）
+│   ├── report_service.py         学习报告聚合
+│   ├── notify_service.py         站内通知（学生/家长）
+│   ├── webhook_push_service.py   钉钉/企微 Webhook 异步推送（白名单/限频/日志脱敏）
+│   └── dingtalk_bot_service.py   钉钉双向机器人指令处理（HMAC 验签/群内审核）
 └── utils/           # 通用工具
     ├── geo.py          经纬度距离（Haversine）
     ├── storage.py      上传落盘 + public_url 生成
     ├── image.py        图片合法性/尺寸校验
-    └── rate_limit.py   内存滑动窗口限频
+    ├── rate_limit.py   内存滑动窗口限频
+    └── timeutil.py     统一时间入口 now_local()（naive 北京时间）
 ```
 
 ---
@@ -130,6 +135,15 @@ FastAPI 通过 `StaticFiles(html=True)` 直接托管学生端与管理端，学�
 
 ### 5.6 家长双角色代理
 家长账号通过绑定码关联多个孩子，家长端所有操作（打卡/兑换/抽奖/报表）都带 `child_id`，走 `/api/parent/*` 系列端点，在服务层校验绑定关系后代孩子执行。前端以 `actingChildId` 表示当前操作对象。
+
+### 5.7 单行配置表与异步推送（v1.3）
+`PushConfig`/`SiteConfig` 均为单行配置表（get_or_create 惰性建行 + PUT 全量保存），后台改完即生效无需重启。Webhook 推送在 daemon 线程异步执行，独立 DB 会话，异常仅写 PushLog，保证打卡主流程零阻塞；URL 仅允许钉钉/企微官方前缀（防 SSRF），日志不落 Webhook URL。
+
+### 5.8 全链路 naive 北京时间（v1.3）
+存储层统一使用 `utils/timeutil.now_local()`（显式 +8，不依赖容器 TZ）产生 naive 北京时间，Dockerfile 另设 `TZ=Asia/Shanghai` 覆盖 `date.today()` 类调用双保险；统一 naive 避免 offset-naive/aware 混比。历史 UTC 数据由迁移 003 整体 +8h 平移并重算 `check_date`，升降级双向可逆。
+
+### 5.9 钉钉双向机器人复用审核链路（v1.3）
+群内 @机器人的「通过/拒绝」指令直接复用 `checkin_service.approve/reject`，与后台审核完全同一逻辑（含连续天数重算与奖励发放）；回调优先加签验证（HMAC-SHA256），未配置 Token 拒绝服务。
 
 ---
 

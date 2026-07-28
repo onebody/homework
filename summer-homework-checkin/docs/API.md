@@ -124,6 +124,12 @@
 | GET | `/api/admin/redemptions` | 管理员 | 兑换记录列表 |
 | GET | `/api/admin/redemptions/{redemption_id}` | 管理员 | 兑换记录详情 |
 | PUT | `/api/admin/redemptions/{redemption_id}/review` | 管理员 | 审核兑换 |
+| GET | `/api/admin/site-config` | 管理员 | 读取站点配置（学生端标题/欢迎标语原始值，未设置为 null） |
+| PUT | `/api/admin/site-config` | 管理员 | 保存站点配置（body: student_title ≤64 字, student_slogan ≤128 字；置空恢复默认） |
+| GET | `/api/admin/push-config` | 管理员 | 读取消息推送配置 |
+| PUT | `/api/admin/push-config` | 管理员 | 保存推送配置（开关/渠道/Webhook URL 白名单校验/事件过滤/限频） |
+| POST | `/api/admin/push-config/test` | 管理员 | 发送测试消息到当前配置的群机器人 |
+| GET | `/api/admin/push-logs` | 管理员 | 推送日志列表（不含 Webhook URL，已脱敏） |
 
 ---
 
@@ -167,7 +173,16 @@
 
 ---
 
-## 11. 系统
+## 11. 站点配置与钉钉机器人
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/site-config` | 否 | 公开读取学生端标题/欢迎标语（未配置时返回服务端默认值，登录前可用） |
+| POST | `/api/dingtalk/outgoing` | 钉钉验签 | 钉钉机器人 Outgoing 回调；加签 HMAC-SHA256 验证（兼容 Token 明文），支持「统计/待审核/查询 <昵称>/通过拒绝 <打卡ID>」指令 |
+
+---
+
+## 12. 系统
 
 | 方法 | 路径 | 认证 | 说明 |
 | --- | --- | --- | --- |

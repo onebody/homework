@@ -9,7 +9,7 @@ from .config import (
 )
 from .database import engine
 from . import models  # noqa: F401 确保模型被加载
-from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge
+from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge, dingtalk_bot, site
 from .utils.rate_limit import check_rate_limit
 
 app = FastAPI(title="暑假作业打卡系统", version="1.2.0")
@@ -33,6 +33,8 @@ app.include_router(admin.router)
 app.include_router(face.router)
 app.include_router(redeem.router)
 app.include_router(challenge.router)
+app.include_router(dingtalk_bot.router)
+app.include_router(site.router)
 
 
 @app.middleware("http")

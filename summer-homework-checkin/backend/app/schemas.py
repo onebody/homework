@@ -324,3 +324,50 @@ class ChallengeCheckInOut(BaseModel):
 class ChallengeCheckInReviewRequest(BaseModel):
     status: str
     note: str | None = None
+
+
+class SiteConfigIn(BaseModel):
+    """站点配置保存请求。"""
+    student_title: str | None = None
+    student_slogan: str | None = None
+
+
+class SiteConfigOut(SiteConfigIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    updated_at: datetime | None = None
+
+
+class PushConfigIn(BaseModel):
+    """推送配置保存请求。"""
+    enabled: bool = False
+    dingtalk_url: str | None = None
+    wechat_url: str | None = None
+    push_on_submitted: bool = True
+    push_on_approved: bool = False
+    push_on_rejected: bool = False
+    rate_limit_per_min: int = 20
+    public_base_url: str | None = None
+    outgoing_token: str | None = None
+    allow_bot_review: bool = False
+
+
+class PushConfigOut(PushConfigIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    updated_at: datetime | None = None
+
+
+class PushLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    channel: str
+    event_type: str
+    title: str | None = None
+    status: str
+    error: str | None = None
+    created_at: datetime
+
+
+class PushTestRequest(BaseModel):
+    channel: str  # dingtalk|wechat

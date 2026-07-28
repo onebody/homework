@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>打卡系统 · 后台管理</title>
-  <link rel="stylesheet" href="./admin.css" />
+  <link rel="stylesheet" href="./admin.css?v=20260731" />
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.4.27/vue.global.prod.js"></script>
   <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -38,6 +38,8 @@
         <div class="tab-redeems" :class="{on:view==='redeems'}" @click="loadRedeems">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
         <div :class="{on:view==='checkins'}" @click="view='checkins'">📸 打卡记录</div>
         <div :class="{on:view==='challenges'}" @click="view='challenges'; loadChallengeTasks()">🏆 闯关任务 <span class="nav-badge" v-if="challengePendingCount>0">{{ challengePendingCount }}</span></div>
+        <div :class="{on:view==='push'}" @click="openPush">🔔 推送配置</div>
+        <div :class="{on:view==='site'}" @click="openSite">⚙️ 系统设置</div>
         <div :class="{on:view==='password'}" @click="view='password'; showPwdForm=false; passwordForm={old_password:'',new_password:'',confirm_password:''}">🔑 修改密码</div>
       </div>
       <button class="logout" @click="logout">退出登录</button>
@@ -513,6 +515,128 @@
         </div>
       </section>
 
+      <!-- 系统设置 -->
+      <section v-if="view==='site'">
+        <h2>⚙️ 系统设置</h2>
+
+        <div class="push-card" v-if="siteConfig">
+          <div class="push-row">
+            <label class="push-url">学生端页面标题
+              <input v-model="siteConfig.student_title" maxlength="64" placeholder="未配置时显示默认标题：暑假作业打卡平台" />
+            </label>
+          </div>
+          <div class="push-row">
+            <label class="push-url">登录页欢迎标语
+              <input v-model="siteConfig.student_slogan" maxlength="128" placeholder="未配置时显示默认标语：每天进步一点点，打卡赢好礼！" />
+            </label>
+          </div>
+          <p class="muted">置空保存即恢复默认值；保存后学生端刷新页面即生效。</p>
+
+          <div class="push-actions">
+            <button class="primary" :disabled="siteSaving" @click="saveSiteConfig">{{ siteSaving ? '保存中…' : '保存设置' }}</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 消息推送配置 -->
+      <section v-if="view==='push'">
+        <h2>🔔 消息推送配置</h2>
+
+        <div class="push-card" v-if="pushConfig">
+          <label class="push-switch">
+            <input type="checkbox" v-model="pushConfig.enabled" />
+            启用消息推送（总开关）
+          </label>
+
+          <div class="push-row">
+            <label class="push-url">钉钉机器人 Webhook URL
+              <div class="push-url-line">
+                <input v-model="pushConfig.dingtalk_url" placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." />
+                <button class="mini" :disabled="pushTesting==='dingtalk'" @click="testPush('dingtalk')">{{ pushTesting==='dingtalk' ? '测试中…' : '测试' }}</button>
+              </div>
+            </label>
+          </div>
+          <div class="push-row">
+            <label class="push-url">企业微信机器人 Webhook URL
+              <div class="push-url-line">
+                <input v-model="pushConfig.wechat_url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." />
+                <button class="mini" :disabled="pushTesting==='wechat'" @click="testPush('wechat')">{{ pushTesting==='wechat' ? '测试中…' : '测试' }}</button>
+              </div>
+            </label>
+          </div>
+
+          <div class="push-row push-types">
+            <span class="push-label">推送事件类型：</span>
+            <label><input type="checkbox" v-model="pushConfig.push_on_submitted" /> 打卡提交（待审核）</label>
+            <label><input type="checkbox" v-model="pushConfig.push_on_approved" /> 审核通过</label>
+            <label><input type="checkbox" v-model="pushConfig.push_on_rejected" /> 审核拒绝</label>
+          </div>
+
+          <div class="push-row push-inline">
+            <label>每分钟最大推送条数（0=不限）
+              <input type="number" min="0" v-model.number="pushConfig.rate_limit_per_min" style="width:90px" />
+            </label>
+            <label>公网访问基址（可选，用于消息内拼照片链接）
+              <input v-model="pushConfig.public_base_url" placeholder="例如 https://example.com" />
+            </label>
+          </div>
+
+          <div class="push-divider">🤖 双向消息（群里 @机器人 查询/审核，仅钉钉）</div>
+
+          <div class="push-row">
+            <label class="push-url">钉钉 Outgoing Token（机器人设置→Outgoing→Token）
+              <input v-model="pushConfig.outgoing_token" placeholder="未配置则双向消息关闭" />
+            </label>
+          </div>
+
+          <div class="push-row push-types">
+            <label><input type="checkbox" v-model="pushConfig.allow_bot_review" /> 允许群内审核（回复「通过 ID」/「拒绝 ID 原因」直接审核打卡）</label>
+          </div>
+
+          <p class="muted">回调地址（填到钉钉机器人 Outgoing 设置，需公网可访问）：<code>{{ outgoingUrl }}</code><br />
+            群里 @机器人 发送：统计 / 待审核 / 查询 昵称 / 通过 ID / 拒绝 ID 原因</p>
+
+          <div class="push-actions">
+            <button class="primary" :disabled="pushSaving" @click="savePushConfig">{{ pushSaving ? '保存中…' : '保存配置' }}</button>
+          </div>
+          <p class="muted">新打卡提交/审核结果将按上方勾选的事件类型，异步推送到已配置的机器人；推送失败不影响打卡业务。</p>
+        </div>
+        <p class="muted" v-else>配置加载中…</p>
+
+        <div class="bar" style="margin-top:18px">
+          <h2 style="margin:0">📜 推送历史</h2>
+          <button class="mini" @click="loadPushLogs">刷新</button>
+        </div>
+
+        <!-- 桌面端表格 -->
+        <table class="desktop-table">
+          <tr><th>时间</th><th>渠道</th><th>事件</th><th>消息摘要</th><th>状态</th><th>备注</th></tr>
+          <tr v-for="l in pushLogs" :key="l.id">
+            <td>{{ new Date(l.created_at).toLocaleString() }}</td>
+            <td>{{ pushChannelLabel(l.channel) }}</td>
+            <td>{{ pushEventLabel(l.event_type) }}</td>
+            <td>{{ l.title }}</td>
+            <td><span :class="['push-badge', l.status]">{{ pushStatusLabel(l.status) }}</span></td>
+            <td class="muted">{{ l.error || '-' }}</td>
+          </tr>
+        </table>
+
+        <!-- 移动端卡片 -->
+        <div class="mobile-cards">
+          <div class="data-card" v-for="l in pushLogs" :key="'m'+l.id">
+            <div class="dc-row">
+              <span class="dc-title">{{ pushChannelLabel(l.channel) }} · {{ pushEventLabel(l.event_type) }}</span>
+              <span :class="['push-badge', l.status]">{{ pushStatusLabel(l.status) }}</span>
+            </div>
+            <div class="dc-row muted">{{ l.title }}</div>
+            <div class="dc-row muted" v-if="l.error">{{ l.error }}</div>
+            <div class="dc-row muted">{{ new Date(l.created_at).toLocaleString() }}</div>
+          </div>
+        </div>
+
+        <p class="muted" v-if="!pushLogs.length" style="text-align:center;padding:20px">暂无推送记录</p>
+      </section>
+
       <!-- 修改密码 -->
       <section v-if="view==='password'">
         <h2>🔑 修改密码</h2>
@@ -739,6 +863,6 @@
   </div>
 </div>
 
-<script src="./app.js"></script>
+<script src="./app.js?v=20260731"></script>
 </body>
 </html>
