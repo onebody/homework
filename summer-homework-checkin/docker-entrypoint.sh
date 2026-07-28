@@ -1,0 +1,19 @@
+#!/bin/sh
+# 容器入口：以 root 启动时先修复数据目录属主，再降权到 appuser 运行应用。
+# 解决场景：bind mount 或旧版镜像遗留的 root 属主 /data 导致非特权用户无法
+# 写入数据库/上传文件/备份（表现为启动崩溃循环或打卡上传 500）。
+set -e
+
+DATA_DIR="${DATA_DIR:-/data}"
+
+if [ "$(id -u)" = "0" ]; then
+    # 确保数据子目录存在
+    mkdir -p "$DATA_DIR/uploads" "$DATA_DIR/backups" 2>/dev/null || true
+    # 修复属主（named volume 首次创建已继承 appuser，此处兼容 bind mount / 升级场景）
+    chown -R appuser:appuser "$DATA_DIR" 2>/dev/null || true
+    # 降权执行（setpriv 为 util-linux 自带，exec 直接替换进程，信号传递干净）
+    exec setpriv --reuid=appuser --regid=appuser --init-groups "$@"
+fi
+
+# 已是非 root（如 docker run --user 指定），直接执行
+exec "$@"

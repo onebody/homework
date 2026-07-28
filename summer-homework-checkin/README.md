@@ -148,7 +148,7 @@ bash scripts/deploy.sh prod     # 生产部署（自动备份 DB + 远程构建�
 
 - **回归测试套件**（`tests/`）：71 个自动化测试，覆盖认证/打卡/审核/家长/商城/闯关/报表/人脸 8 大模块。
   - 运行方式：`python -m pytest tests/ -v`（本地）或 `bash tests/run_tests.sh`（自动检测依赖）
-  - 支持多环境：`API_BASE_URL=http://192.168.1.112:6565 python -m pytest tests/ -v`
+  - 支持多环境：`API_BASE_URL=http://<服务器地址>:<端口> python -m pytest tests/ -v`
 - **真人测试建议**：邀请 3–5 名三年级小学生，在手机端独立完成「注册 → 打卡 → 抽奖 → 查看报告」全流程（均可在 3 步内完成）。
 
 ---

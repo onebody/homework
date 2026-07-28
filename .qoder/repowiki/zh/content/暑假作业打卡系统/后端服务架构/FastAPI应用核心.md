@@ -18,9 +18,10 @@
 
 ## 更新摘要
 **变更内容**   
-- 新增安全响应头中间件，实现X-Frame-Options、X-Content-Type-Options、XSS-Protection等安全头部设置
-- 收紧CORS配置，遵循最小权限原则，限制允许的源、方法和头部
-- 增强应用安全性，防止点击劫持、MIME类型嗅探和XSS攻击
+- 新增Content Security Policy (CSP)头部配置，增强应用安全性
+- 增强的Permissions-Policy配置，限制地理位置访问权限
+- 版本更新至1.2.0，包含安全增强和功能优化
+- 继续保留X-Frame-Options、X-Content-Type-Options、XSS-Protection等现有安全头部设置
 
 ## 目录
 1. [简介](#简介)
@@ -37,7 +38,8 @@
 ## 简介
 本技术文档聚焦于暑假作业打卡系统的FastAPI后端核心，围绕以下目标展开：
 - 应用初始化与配置：CORS中间件、静态资源挂载、路由注册机制
-- **新增安全响应头中间件**：X-Frame-Options、X-Content-Type-Options、XSS-Protection等安全头部设置
+- **新增Content Security Policy (CSP)头部配置**：提供全面的跨站脚本攻击防护
+- **增强的Permissions-Policy配置**：限制地理位置等敏感API的访问权限
 - 启动事件与数据库表自动创建流程
 - 配置文件管理、环境变量与常量定义的最佳实践
 - 健康检查端点与错误处理机制
@@ -67,7 +69,7 @@ A --> H["依赖注入与安全<br/>deps.py, security.py"]
 G --> I["打卡服务<br/>services/checkin_service.py"]
 I --> J["图片校验<br/>utils/image.py"]
 I --> K["文件存储<br/>utils/storage.py"]
-A --> L["安全中间件<br/>响应头保护"]
+A --> L["安全中间件<br/>CSP + Permissions-Policy"]
 ```
 
 图表来源
@@ -90,7 +92,8 @@ A --> L["安全中间件<br/>响应头保护"]
 ## 核心组件
 - 应用装配与中间件
   - **收紧的CORS中间件**：遵循最小权限原则，限制允许的源、方法和头部
-  - **新增安全响应头中间件**：自动添加X-Frame-Options、X-Content-Type-Options、XSS-Protection等安全头部
+  - **新增Content Security Policy (CSP)中间件**：提供全面的跨站脚本攻击防护
+  - **增强的Permissions-Policy配置**：限制地理位置等敏感API的访问权限
   - 静态资源挂载：上传目录、学生端H5、管理后台
   - 路由集中注册：认证、打卡、抽奖、奖品、家长、报表、管理员、人脸、兑换、闯关等
 - 启动事件
@@ -121,14 +124,15 @@ A --> L["安全中间件<br/>响应头保护"]
 - [image.py:1-61](file://summer-homework-checkin/backend/app/utils/image.py#L1-L61)
 
 ## 架构总览
-下图展示了请求从客户端到路由、依赖注入、服务层与数据层的调用链路，以及静态资源与健康检查的处理路径。**新增的安全响应头中间件在请求处理的最后阶段自动添加安全头部**。
+下图展示了请求从客户端到路由、依赖注入、服务层与数据层的调用链路，以及静态资源与健康检查的处理路径。**新增的Content Security Policy和Permissions-Policy中间件在请求处理的最后阶段自动添加安全头部**。
 
 ```mermaid
 sequenceDiagram
 participant Client as "客户端"
 participant App as "FastAPI应用<br/>main.py"
 participant CORS as "CORS中间件<br/>收紧配置"
-participant Security as "安全响应头中间件<br/>X-Frame-Options等"
+participant CSP as "CSP中间件<br/>Content Security Policy"
+participant PermPolicy as "Permissions-Policy中间件<br/>权限控制"
 participant Router as "路由层<br/>routers/*"
 participant Deps as "依赖注入<br/>deps.py"
 participant Service as "服务层<br/>services/*"
@@ -137,6 +141,10 @@ participant FS as "文件系统<br/>utils/storage.py"
 Client->>App : "HTTP 请求"
 App->>CORS : "CORS预检与验证"
 CORS-->>App : "允许跨域访问"
+App->>CSP : "添加CSP安全头"
+CSP-->>App : "CSP策略生效"
+App->>PermPolicy : "设置权限策略"
+PermPolicy-->>App : "地理位置等权限受限"
 App->>Router : "分发到对应路由"
 Router->>Deps : "解析认证与权限"
 Deps-->>Router : "返回当前用户"
@@ -145,8 +153,7 @@ Service->>DB : "读写数据"
 Service->>FS : "保存/读取文件"
 DB-->>Service : "返回结果"
 Service-->>Router : "返回业务结果"
-Router-->>Security : "响应对象"
-Security-->>Client : "添加安全头部后返回"
+Router-->>Client : "返回响应"
 Note over App : "启动时创建所有表<br/>挂载静态资源<br/>注册路由<br/>添加安全中间件"
 ```
 
@@ -163,7 +170,8 @@ Note over App : "启动时创建所有表<br/>挂载静态资源<br/>注册路�
 ### 应用初始化与启动流程
 - 中间件与静态资源
   - **收紧的CORS中间件**：遵循最小权限原则，仅允许必要的源、方法和头部
-  - **新增安全响应头中间件**：自动为所有响应添加X-Frame-Options、X-Content-Type-Options、XSS-Protection等安全头部
+  - **新增Content Security Policy (CSP)中间件**：为所有响应添加CSP头部，防止跨站脚本攻击
+  - **增强的Permissions-Policy中间件**：限制地理位置、摄像头等敏感API的访问权限
   - 挂载三个静态目录：上传目录、管理后台、学生端H5
 - 路由注册
   - 将各功能模块的路由器集中注册至应用
@@ -177,6 +185,8 @@ flowchart TD
 Start(["应用启动"]) --> Init["初始化FastAPI实例"]
 Init --> SecurityHeaders["添加安全响应头中间件"]
 Init --> TightCORS["添加收紧的CORS中间件"]
+Init --> CSP["添加CSP中间件"]
+Init --> PermPolicy["添加Permissions-Policy中间件"]
 Init --> Mount["挂载静态资源目录"]
 Init --> Routes["注册各功能路由"]
 Init --> Health["注册健康检查端点"]
@@ -376,10 +386,12 @@ PRIZES ||--o{ REDEMPTIONS : "被兑换"
   - HTTPBearer方案，自动解析Authorization头
   - get_current_user：校验令牌并加载用户对象
   - require_role：基于角色的访问控制装饰器
-- **新增安全响应头保护**
+- **全面的安全响应头保护**
   - X-Frame-Options: DENY - 防止点击劫持攻击
   - X-Content-Type-Options: nosniff - 防止MIME类型嗅探
   - X-XSS-Protection: 1; mode=block - 启用XSS过滤器
+  - **Content Security Policy (CSP)**：定义安全的资源加载策略
+  - **Permissions-Policy**：限制地理位置、摄像头等敏感API访问
 
 ```mermaid
 classDiagram
@@ -403,6 +415,8 @@ class SecurityHeaders {
 +set_x_frame_options()
 +set_content_type_options()
 +set_xss_protection()
++set_csp_policy()
++set_permissions_policy()
 }
 Security <.. AuthRouter : "使用"
 Dependencies <.. AuthRouter : "依赖注入"
@@ -474,9 +488,11 @@ Router-->>Client : "CheckInOut"
   - 路由与服务层通过HTTPException抛出业务异常，携带状态码与详情
   - 依赖注入层对未提供或无效令牌返回401，角色不匹配返回403
   - 人脸识别服务不可用时返回503，提示稍后重试
-- **安全响应头保护**
+- **全面的安全响应头保护**
   - 所有响应自动添加安全头部，无需在每个路由中手动设置
   - 防止点击劫持、MIME类型嗅探和XSS攻击
+  - CSP策略有效阻止恶意脚本执行
+  - Permissions-Policy限制敏感API访问
 
 章节来源
 - [main.py:33-35](file://summer-homework-checkin/backend/app/main.py#L33-L35)
@@ -509,6 +525,8 @@ Services --> Models
 Utils --> Config
 Main --> SecurityHeaders["安全响应头中间件"]
 Main --> TightCORS["收紧的CORS中间件"]
+Main --> CSP["CSP中间件"]
+Main --> PermPolicy["Permissions-Policy中间件"]
 ```
 
 图表来源
@@ -544,6 +562,7 @@ Main --> TightCORS["收紧的CORS中间件"]
   - 无状态令牌减少会话存储压力；注意密钥轮换与过期策略
 - **安全中间件性能**
   - 安全响应头中间件开销极小，仅为字符串操作
+  - CSP和Permissions-Policy配置对性能影响微乎其微
   - CORS预检请求可能增加延迟，应合理配置缓存策略
 
 [本节为通用性能建议，无需特定文件来源]
@@ -556,11 +575,15 @@ Main --> TightCORS["收紧的CORS中间件"]
   - 503 人脸识别服务不可用：等待服务恢复或降级策略生效
   - **跨域问题**：检查CORS配置是否允许正确的源、方法和头部
   - **安全头部缺失**：确认安全响应头中间件是否正确加载
+  - **CSP策略问题**：检查CSP配置是否阻止了必要的资源加载
+  - **地理位置权限问题**：确认Permissions-Policy配置是否限制了必要的API访问
 - 定位方法
   - 查看路由与服务层抛出的HTTPException详情
   - 检查uploads目录权限与磁盘空间
   - 核对环境变量是否注入正确（如SUMMER_SECRET、GEO_THRESHOLD_METERS等）
   - 使用浏览器开发者工具检查响应头是否包含安全头部
+  - 检查浏览器控制台中的CSP违规报告
+  - 验证地理位置API的权限设置
 
 章节来源
 - [deps.py:13-33](file://summer-homework-checkin/backend/app/deps.py#L13-L33)
@@ -569,12 +592,12 @@ Main --> TightCORS["收紧的CORS中间件"]
 
 ## 结论
 本FastAPI应用以清晰的模块化与分层设计实现了打卡系统的核心能力：
-- 通过**收紧的CORS中间件和安全响应头中间件**提供增强的安全防护
+- 通过**收紧的CORS中间件、Content Security Policy中间件和Permissions-Policy中间件**提供全面的安全防护
 - 启动事件确保数据库表自动创建，简化部署
 - 配置与环境变量统一管理，便于运维与扩展
 - 健康检查与错误处理完善，利于监控与排障
 - 鉴权与业务服务解耦，易于新增功能与维护
-- **新增的安全措施有效防止点击劫持、MIME类型嗅探和XSS攻击**
+- **新增的安全措施有效防止点击劫持、MIME类型嗅探、XSS攻击和敏感API滥用**
 
 [本节为总结性内容，无需特定文件来源]
 
@@ -586,6 +609,7 @@ Main --> TightCORS["收紧的CORS中间件"]
 - 新增中间件
   - 在 main.py 中使用 app.add_middleware(...) 添加自定义中间件
   - **参考安全响应头中间件的实现模式**，确保中间件顺序正确
+  - **参考CSP和Permissions-Policy中间件的配置方式**，为新功能添加相应的安全保护
   - 中间件应关注横切关注点（日志、限流、审计等），避免侵入业务逻辑
 - 新增配置项
   - 在 config.py 中添加常量，优先支持环境变量覆盖
@@ -603,5 +627,7 @@ Main --> TightCORS["收紧的CORS中间件"]
   - 参考现有的安全响应头中间件，为新功能添加相应的安全保护
   - 遵循最小权限原则配置CORS和其他安全设置
   - 定期审查和更新安全策略
+  - 在新功能中考虑CSP策略的影响，避免不必要的资源加载限制
+  - 评估新功能对Permissions-Policy的影响，确保不会过度限制必要功能
 
 [本节为概念性指导，无需特定文件来源]

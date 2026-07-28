@@ -20,9 +20,13 @@ RUN useradd --create-home --uid 10001 appuser \
     && mkdir -p /data \
     && chown -R appuser:appuser /app /data
 
+# 入口脚本：以 root 启动时修复 /data 属主（兼容 bind mount / 旧卷升级），再降权到 appuser
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 WORKDIR /app/backend
-USER appuser
 EXPOSE 8000
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 # 启动时自动执行：数据库备份 → 迁移 → 种子数据 → 服务
 CMD ["sh", "-c", "python migrate.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

@@ -18,16 +18,20 @@ from app.database import engine, Base
 
 
 def backup_db():
-    """备份当前数据库文件。"""
+    """备份当前数据库文件（容错：备份失败不得阻断应用启动）。"""
     if not os.path.exists(DB_PATH):
         print("ℹ️  数据库文件不存在，跳过备份")
         return
-    backup_dir = os.path.join(os.path.dirname(DB_PATH), "backups")
-    os.makedirs(backup_dir, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(backup_dir, f"app_{ts}.db")
-    shutil.copy2(DB_PATH, backup_path)
-    print(f"✅ 数据库已备份到: {backup_path}")
+    try:
+        backup_dir = os.path.join(os.path.dirname(DB_PATH), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(backup_dir, f"app_{ts}.db")
+        shutil.copy2(DB_PATH, backup_path)
+        print(f"✅ 数据库已备份到: {backup_path}")
+    except Exception as e:
+        # 备份仅为防护措施，权限/磁盘等问题不应导致容器无法启动
+        print(f"⚠️  数据库备份失败（已忽略，不影响启动）: {e}")
 
 
 def run_migrations():

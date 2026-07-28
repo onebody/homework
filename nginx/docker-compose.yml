@@ -1,0 +1,43 @@
+# ============================================================================
+# Nginx 反向代理 —— 独立编排（不依赖任何应用服务即可单独启停）
+#
+# 前置条件（仅首次）：创建外部共享网络
+#   docker network create hanghang-net
+#
+# 启动（在 hanghang_WS 目录下，或直接在 nginx/ 目录下去掉 -f 参数）：
+#   docker compose -f nginx/docker-compose.yml up -d
+# 停止：
+#   docker compose -f nginx/docker-compose.yml down
+# 改配置后热重载（无需重启容器）：
+#   docker exec local-nginx nginx -s reload
+#
+# 与应用服务的关系：
+#   - 通过 hanghang-net 网络按容器名（summer-homework / points-system）代理
+#   - 借助 Docker 内置 DNS 动态解析（见 default.conf），后端未启动时
+#     nginx 仍可正常启动，对应路径返回 502，后端上线后自动恢复
+# ============================================================================
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: local-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./sites:/etc/nginx/sites:ro
+    networks:
+      - hanghang-net
+    restart: unless-stopped
+    healthcheck:
+      # 仅检查 nginx 自身（根路径导航页），不依赖后端服务健康状态
+      # 用 127.0.0.1 而非 localhost：busybox wget 优先解析 ::1，而 nginx 仅监听 IPv4
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  hanghang-net:
+    external: true

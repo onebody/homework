@@ -5,8 +5,16 @@
 # ============================================================================
 # 用法：
 #   ./deploy.sh local      # 本地 Docker 增量更新
-#   DEPLOY_SSH_PASS=xxx ./deploy.sh prod       # 生产服务器增量更新
-#   DEPLOY_SSH_PASS=xxx ./deploy.sh prod --no-backup  # 跳过备份
+#   DEPLOY_SSH_HOST=<服务器IP> DEPLOY_SSH_PASS=xxx ./deploy.sh prod       # 生产服务器增量更新
+#   DEPLOY_SSH_HOST=<服务器IP> DEPLOY_SSH_PASS=xxx ./deploy.sh prod --no-backup  # 跳过备份
+#
+# 环境变量（生产部署）：
+#   DEPLOY_SSH_HOST      必填，生产服务器地址
+#   DEPLOY_SSH_PASS      必填，SSH 密码（建议改用密钥登录后置空）
+#   DEPLOY_SSH_USER      选填，默认 root
+#   DEPLOY_SSH_PORT      选填，默认 22
+#   DEPLOY_APP_PORT      选填，默认 9000
+#   DEPLOY_ALLOWED_ORIGINS 选填，CORS 白名单（逗号分隔），默认根据 DEPLOY_SSH_HOST 生成
 # ============================================================================
 
 set -euo pipefail
@@ -65,15 +73,20 @@ deploy_prod() {
         SKIP_BACKUP=true
     fi
 
-    SSH_USER="qihang"
-    SSH_HOST="192.168.1.112"
+    SSH_USER="${DEPLOY_SSH_USER:-root}"
+    SSH_HOST="${DEPLOY_SSH_HOST:?请设置环境变量 DEPLOY_SSH_HOST（生产服务器地址）}"
     SSH_PASS="${DEPLOY_SSH_PASS:?请设置环境变量 DEPLOY_SSH_PASS}"
-    SSH_PORT="22"
+    SSH_PORT="${DEPLOY_SSH_PORT:-22}"
+    APP_PORT="${DEPLOY_APP_PORT:-9000}"
+    APP_UID="10001"   # Dockerfile 中 appuser 的 uid（非 root 容器）
     DEPLOY_DIR="/tmp/summer-homework-checkin"
-    DATA_DIR="/var/services/homes/qihang/homework-deploy/data"
+    # 生产服务器上现行容器 bind mount 的真实数据目录
+    DATA_DIR="${DEPLOY_DATA_DIR:-/opt/homework-deploy/data}"
+    # CORS 白名单：未显式指定时根据目标地址生成
+    ALLOWED_ORIGINS="${DEPLOY_ALLOWED_ORIGINS:-http://$SSH_HOST:$APP_PORT,http://localhost:$APP_PORT}"
 
     log_info "===== 生产服务器增量更新 ====="
-    log_warn "目标: $SSH_USER@$SSH_HOST"
+    log_warn "目标: $SSH_USER@$SSH_HOST:$APP_PORT"
 
     if [[ "$SKIP_BACKUP" == "false" ]]; then
         # 1. 备份生产数据库
@@ -87,24 +100,26 @@ deploy_prod() {
 
     # 2. 传输更新后的代码
     log_info "传输更新代码到服务器..."
-    tar czf - -C "$PROJECT_DIR" summer-homework-checkin/ | \
+    # COPYFILE_DISABLE=1 禁止 macOS tar 打包 AppleDouble（._*）元数据文件，
+    # 否则 ._*.py 会被 alembic 误加载导致 "source code string cannot contain null bytes"
+    COPYFILE_DISABLE=1 tar czf - -C "$PROJECT_DIR" --exclude='._*' --exclude='.DS_Store' summer-homework-checkin/ | \
         sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
             "cat > /tmp/homework-deploy-update.tar.gz && cd /tmp && rm -rf $DEPLOY_DIR && tar xzf homework-deploy-update.tar.gz && rm homework-deploy-update.tar.gz && echo 'TRANSFER_OK'"
 
-    # 3. 重新构建 Docker 镜像
+    # 3. 重新构建 Docker 镜像（root 用户无需 sudo）
     log_info "重新构建 Docker 镜像..."
     sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-        "echo '$SSH_PASS' | sudo -S docker build -t summer-homework-img $DEPLOY_DIR/ 2>&1 | tail -3"
+        "docker build -t summer-homework-img $DEPLOY_DIR/ 2>&1 | tail -3"
 
     # 4. 停止旧容器（保留数据卷）
     log_info "停止旧容器..."
     sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-        "echo '$SSH_PASS' | sudo -S docker stop summer-homework 2>/dev/null; echo 'STOPPED'"
+        "docker stop summer-homework 2>/dev/null; echo 'STOPPED'"
 
     # 5. 删除旧容器（不删除 volume）
     log_info "删除旧容器（保留数据卷）..."
     sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-        "echo '$SSH_PASS' | sudo -S docker rm summer-homework 2>/dev/null; echo 'REMOVED'"
+        "docker rm summer-homework 2>/dev/null; echo 'REMOVED'"
 
     # 6. 启动新容器（挂载原有数据卷）
     log_info "启动新容器（挂载原有数据）..."
@@ -115,13 +130,18 @@ deploy_prod() {
         log_error "请先在服务器上生成密钥: openssl rand -hex 32 > $DATA_DIR/.secret_key"
         exit 1
     fi
+    # 关键：容器以非 root 用户 appuser(uid $APP_UID) 运行，bind mount 的宿主数据目录
+    # 需将属主调整为 appuser，否则容器无法写入 app.db / uploads（仅改属主，不动数据）
+    log_info "调整数据目录属主为 appuser(uid $APP_UID) 以适配非 root 容器..."
     sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-        "echo '$SSH_PASS' | sudo -S docker run -d --name summer-homework --restart unless-stopped \
-            -p 6565:8000 \
+        "chown -R $APP_UID:$APP_UID $DATA_DIR && echo 'CHOWN_OK'"
+    sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+        "docker run -d --name summer-homework --restart unless-stopped \
+            -p $APP_PORT:8000 \
             -e DB_PATH=/data/app.db \
             -e UPLOAD_DIR=/data/uploads \
             -e SUMMER_SECRET=\$(cat $DATA_DIR/.secret_key) \
-            -e ALLOWED_ORIGINS=http://192.168.1.112:6565,http://localhost:6565 \
+            -e ALLOWED_ORIGINS=$ALLOWED_ORIGINS \
             -v $DATA_DIR:/data \
             summer-homework-img 2>&1"
 
@@ -131,21 +151,21 @@ deploy_prod() {
 
     local HEALTH
     HEALTH=$(sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-        "curl -sf http://localhost:6565/api/health 2>/dev/null || echo 'FAIL'")
+        "curl -sf http://localhost:$APP_PORT/api/health 2>/dev/null || echo 'FAIL'")
 
     if [[ "$HEALTH" == *"ok"* ]]; then
-        log_info "生产服务验证通过: http://192.168.1.112:6565/api/health"
+        log_info "生产服务验证通过: http://$SSH_HOST:$APP_PORT/api/health"
     else
         log_error "生产服务验证失败！"
         log_error "数据库备份位置: $DATA_DIR/backups/"
-        log_error "回滚命令: sshpass -p '$SSH_PASS' ssh -p $SSH_PORT $SSH_USER@$SSH_HOST \"echo '$SSH_PASS' | sudo -S docker logs summer-homework\""
+        log_error "排查命令: sshpass -p '****' ssh -p $SSH_PORT $SSH_USER@$SSH_HOST \"docker logs summer-homework\""
         exit 1
     fi
 
     # 8. 显示迁移日志
     log_info "迁移日志:"
     sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-        "echo '$SSH_PASS' | sudo -S docker logs summer-homework 2>&1 | head -15"
+        "docker logs summer-homework 2>&1 | head -15"
 
     log_info "===== 生产增量更新完成 ====="
 }
@@ -162,7 +182,7 @@ case "${1:-}" in
         echo "用法: $0 {local|prod} [--no-backup]"
         echo ""
         echo "  local   本地 Docker 增量更新（保留数据卷）"
-        echo "  prod    生产服务器 (192.168.1.112) 增量更新"
+        echo "  prod    生产服务器增量更新（需设置 DEPLOY_SSH_HOST / DEPLOY_SSH_PASS）"
         echo "  --no-backup  跳过数据库备份（不推荐用于生产）"
         exit 1
         ;;

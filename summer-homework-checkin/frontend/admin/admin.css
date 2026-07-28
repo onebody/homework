@@ -312,7 +312,7 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
 .checkin-thumb:hover{border-color:#2f80ed}
 .dc-note{font-size:12px;margin-bottom:8px;word-break:break-all;color:#8a99ad}
 .dc-actions{display:flex;gap:8px;flex-wrap:wrap}
-.dc-actions .mini{flex:1;text-align:center;min-height:40px;padding:8px;font-size:13px;margin-right:0}
+.dc-actions .mini{flex:1;text-align:center;min-height:44px;padding:8px;font-size:13px;margin-right:0}
 
 /* ==================== 手机端顶部栏（含退出登录） ==================== */
 .m-topbar{display:none}
@@ -328,17 +328,20 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
   }
   .m-brand{font-weight:700;font-size:14px;white-space:nowrap}
   .m-title{font-size:14px;color:#cdd7e2;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 8px}
-  .m-logout{background:transparent;border:1px solid #3a4a5c;color:#cdd7e2;border-radius:8px;padding:6px 12px;font-size:13px;min-height:auto}
+  /* 退出按钮保证 44px 触控区域 */
+  .m-logout{background:transparent;border:1px solid #3a4a5c;color:#cdd7e2;border-radius:8px;padding:6px 14px;font-size:13px;min-height:44px}
 
-  /* 侧边栏变为底部 Tab */
+  /* 侧边栏变为底部 Tab（固定贴底，适配 iPhone 安全区） */
   .layout{flex-direction:column}
-  .side{width:100%;flex-direction:row;padding:0 0 env(safe-area-inset-bottom);order:2;position:sticky;bottom:0;z-index:10;box-shadow:0 -2px 10px rgba(0,0,0,.12)}
+  .side{width:100%;flex-direction:row;padding:0 0 env(safe-area-inset-bottom);order:2;position:fixed;bottom:0;left:0;right:0;z-index:10;box-shadow:0 -2px 10px rgba(0,0,0,.12)}
   .brand{display:none}
   .menu{display:flex;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .menu div{flex:0 0 auto;min-width:74px;text-align:center;padding:11px 10px;font-size:12px;border-left:none;border-top:3px solid transparent;white-space:nowrap}
+  .menu div{flex:0 0 auto;min-width:74px;min-height:48px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px 10px;font-size:12px;border-left:none;border-top:3px solid transparent;white-space:nowrap}
   .menu div.on{border-top-color:#7eb6ff;border-left:none;color:#fff;background:#2f80ed}
+  /* 兑换记录入口置顶（Tab 首位） */
+  .menu .tab-redeems{order:-1}
   .logout{display:none}
-  .main{padding:14px 12px 88px;order:1}
+  .main{padding:14px 12px calc(88px + env(safe-area-inset-bottom));order:1}
   .main h2{font-size:17px}
 
   /* 桌面端表格隐藏，显示卡片列表（全部模块） */
@@ -357,24 +360,32 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
   .bar{flex-wrap:wrap;gap:6px}
   .bar .mini{font-size:11px;padding:4px 8px}
 
-  /* 弹窗变为底部滑入全屏抽屉 */
-  .modal-card{width:100%;max-width:100%;border-radius:16px 16px 0 0;position:fixed;bottom:0;left:0;right:0;max-height:90vh;overflow-y:auto;padding-bottom:calc(22px + env(safe-area-inset-bottom))}
-  .modal-card h3{position:sticky;top:0;background:#fff;padding-bottom:10px;margin-top:0}
+  /* 弹窗变为底部滑入式抽屉（bottom sheet） */
+  .modal{align-items:flex-end}
+  .modal-card{width:100%;max-width:100%;border-radius:16px 16px 0 0;position:fixed;bottom:0;left:0;right:0;max-height:90vh;overflow-y:auto;padding-bottom:calc(22px + env(safe-area-inset-bottom));animation:sheetUp .25s ease}
+  .modal-card h3{position:sticky;top:0;background:#fff;padding-bottom:10px;margin-top:0;z-index:1}
 
-  /* 触控规范：点击区域不小于 44px */
-  input,select{min-height:44px;font-size:16px}
+  /* 触控规范：点击区域不小于 44px；字号≥16px 防 iOS 自动缩放 */
+  input,select,textarea{min-height:44px;font-size:16px}
   button{min-height:44px}
 
   .viewer-toolbar{padding:8px 12px;gap:6px;flex-wrap:wrap}
-  .viewer-toolbar .vbtn{width:28px;height:28px;font-size:14px}
-  .viewer-nav{width:40px;height:48px;font-size:24px}
+  /* 查看器按钮同样遵循 44px 触控规范（工具栏可换行） */
+  .viewer-toolbar .vbtn{width:44px;height:44px;font-size:16px}
+  .viewer-nav{width:44px;height:56px;font-size:24px}
   .viewer-prev{left:6px}.viewer-next{right:6px}
   .viewer-img{max-width:96vw;max-height:60vh}
   .viewer-upload-panel{right:8px;left:8px;width:auto;max-height:55vh}
   .viewer-thumbs{padding:8px 12px}
   .viewer-thumb{width:46px;height:46px}
   .viewer-caption{display:none}
+
+  /* Toast 上移，避免被底部 Tab 遮挡 */
+  .toast{left:50%;right:auto;transform:translateX(-50%);bottom:calc(100px + env(safe-area-inset-bottom));white-space:nowrap}
 }
+
+/* bottom sheet 滑入动画 */
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 
 /* 登录页自适应 */
 @media (max-width:768px){
@@ -413,7 +424,13 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
 .dash-system{background:#fff;border-radius:14px;padding:18px;box-shadow:0 4px 12px rgba(0,0,0,.05);margin-bottom:20px}
 .dash-system h3{margin:0 0 12px;font-size:14px;color:#5a6b7e}
 .sys-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
-.sys-item{background:#f7f9fc;border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:4px}
+.sys-item{background:#f7f9fc;border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:4px;transition:background .15s,transform .1s}
+/* 可点击统计块：跳转到对应详情页（桌面 hover，移动端 active 反馈） */
+.dash-card.clickable,.sys-item.clickable{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
+.dash-card.clickable:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(47,128,237,.18)}
+.dash-card.clickable:active{transform:scale(.97)}
+.sys-item.clickable:hover{background:#eef3fb}
+.sys-item.clickable:active{transform:scale(.97);background:#e6eefc}
 .sys-k{font-size:11px;color:#8a99ad}
 .sys-v{font-size:15px;font-weight:700;color:#2b3a4a}
 .sys-v.ok{color:#27ae60}

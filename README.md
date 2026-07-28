@@ -58,7 +58,7 @@ uvicorn app.main:app --reload
 
 - 学生端：http://localhost:8000/
 - 管理端：http://localhost:8000/admin/
-- 默认账号：admin / admin123
+- 默认账号：admin（密码由环境变量 `ADMIN_INIT_PASSWORD` 指定；未设置时 seed 自动生成随机密码并在控制台输出）
 
 ---
 

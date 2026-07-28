@@ -22,6 +22,7 @@ createApp({
       editing: null, reviewing: null, reviewingRedeem: null, reviewingChallenge: null,
       challengeEditing: null,
       checkinFilter: "pending", redeemFilter: "all", challengeCheckinFilter: "pending",
+      userFilter: "all",
       pendingCount: 0, redeemPendingCount: 0, challengePendingCount: 0,
       toast: "", toastTimer: null,
 
@@ -70,7 +71,13 @@ createApp({
         redeems: "兑换审核",
         checkins: "打卡审核",
         challenges: "闯关任务",
+        password: "修改密码",
       }[this.view] || "";
+    },
+    // 用户管理：按角色筛选（全部/学生/家长）
+    filteredUsers() {
+      if (this.userFilter === "all") return this.users;
+      return this.users.filter(u => u.role === this.userFilter);
     },
   },
   methods: {
@@ -243,11 +250,28 @@ createApp({
         const all = await this.api("/api/admin/checkins");
         if (this.checkinFilter === "pending") {
           this.checkins = all.filter(c => c.review_status === "pending");
+        } else if (this.checkinFilter === "geo") {
+          // 位置异常打卡
+          this.checkins = all.filter(c => c.geo_flag);
         } else {
           this.checkins = all;
         }
         this.pendingCount = all.filter(c => c.review_status === "pending").length;
       } catch (e) { this.checkins = []; }
+    },
+    /* ==================== 概览统计块跳转 ==================== */
+    goUsers(filter) {
+      this.userFilter = filter || "all";
+      this.view = "users";
+    },
+    async goCheckins(filter) {
+      this.checkinFilter = filter || "all";
+      this.view = "checkins";
+      await this.loadCheckins();
+    },
+    async goRedeems(filter) {
+      this.redeemFilter = filter || "all";
+      await this.loadRedeems(); // loadRedeems 内部会切换 view
     },
     async loadRedeems() {
       try {

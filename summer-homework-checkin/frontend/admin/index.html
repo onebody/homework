@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>打卡系统 · 后台管理</title>
   <link rel="stylesheet" href="./admin.css" />
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.4.27/vue.global.prod.js"></script>
@@ -35,7 +35,7 @@
         <div :class="{on:view==='dashboard'}" @click="view='dashboard'">📈 数据概览</div>
         <div :class="{on:view==='prizes'}" @click="view='prizes'">🎁 奖品管理</div>
         <div :class="{on:view==='users'}" @click="view='users'">👥 用户管理</div>
-        <div :class="{on:view==='redeems'}" @click="loadRedeems">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
+        <div class="tab-redeems" :class="{on:view==='redeems'}" @click="loadRedeems">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
         <div :class="{on:view==='checkins'}" @click="view='checkins'">📸 打卡记录</div>
         <div :class="{on:view==='challenges'}" @click="view='challenges'; loadChallengeTasks()">🏆 闯关任务 <span class="nav-badge" v-if="challengePendingCount>0">{{ challengePendingCount }}</span></div>
         <div :class="{on:view==='password'}" @click="view='password'; showPwdForm=false; passwordForm={old_password:'',new_password:'',confirm_password:''}">🔑 修改密码</div>
@@ -53,12 +53,14 @@
 
         <!-- 核心指标卡片 -->
         <div class="dash-grid" v-if="dash">
-          <div class="dash-card blue"><div class="dash-icon">👥</div><div class="dash-body"><div class="dash-v">{{ dash.total_users }}</div><div class="dash-k">总注册用户</div></div></div>
+          <div class="dash-card blue clickable" @click="goUsers('all')" title="查看用户管理"><div class="dash-icon">👥</div><div class="dash-body"><div class="dash-v">{{ dash.total_users }}</div><div class="dash-k">总注册用户</div></div></div>
+          <div class="dash-card teal clickable" @click="goUsers('student')" title="查看学生列表"><div class="dash-icon">🎒</div><div class="dash-body"><div class="dash-v">{{ dash.total_students }}</div><div class="dash-k">学生数</div></div></div>
+          <div class="dash-card indigo clickable" @click="goUsers('parent')" title="查看家长列表"><div class="dash-icon">👪</div><div class="dash-body"><div class="dash-v">{{ dash.total_parents }}</div><div class="dash-k">家长数</div></div></div>
           <div class="dash-card green"><div class="dash-icon">🔥</div><div class="dash-body"><div class="dash-v">{{ dash.monthly_active }}</div><div class="dash-k">本月活跃用户</div></div></div>
-          <div class="dash-card purple"><div class="dash-icon">📸</div><div class="dash-body"><div class="dash-v">{{ dash.today_checkins }}</div><div class="dash-k">今日新增打卡</div></div></div>
+          <div class="dash-card purple clickable" @click="goCheckins('all')" title="查看打卡记录"><div class="dash-icon">📸</div><div class="dash-body"><div class="dash-v">{{ dash.today_checkins }}</div><div class="dash-k">今日新增打卡</div></div></div>
           <div class="dash-card orange"><div class="dash-icon">💰</div><div class="dash-body"><div class="dash-v">{{ dash.monthly_points_issued }}</div><div class="dash-k">本月积分发放</div></div></div>
-          <div class="dash-card red"><div class="dash-icon">⏳</div><div class="dash-body"><div class="dash-v">{{ dash.pending_checkins }}</div><div class="dash-k">待审核打卡</div></div></div>
-          <div class="dash-card red"><div class="dash-icon">🎁</div><div class="dash-body"><div class="dash-v">{{ dash.pending_redemptions }}</div><div class="dash-k">待处理兑换</div></div></div>
+          <div class="dash-card red clickable" @click="goCheckins('pending')" title="去审核打卡"><div class="dash-icon">⏳</div><div class="dash-body"><div class="dash-v">{{ dash.pending_checkins }}</div><div class="dash-k">待审核打卡</div></div></div>
+          <div class="dash-card red clickable" @click="goRedeems('pending')" title="去处理兑换"><div class="dash-icon">🎁</div><div class="dash-body"><div class="dash-v">{{ dash.pending_redemptions }}</div><div class="dash-k">待处理兑换</div></div></div>
           <div class="dash-card teal"><div class="dash-icon">🏆</div><div class="dash-body"><div class="dash-v">{{ dash.max_streak_month }}</div><div class="dash-k">最高连续打卡</div></div></div>
           <div class="dash-card indigo"><div class="dash-icon">📊</div><div class="dash-body"><div class="dash-v">{{ dash.avg_daily_checkins }}</div><div class="dash-k">日均打卡次数</div></div></div>
         </div>
@@ -98,9 +100,9 @@
           <div class="sys-grid">
             <div class="sys-item"><span class="sys-k">运行时长</span><span class="sys-v">{{ formatUptime(dash.system.uptime_seconds) }}</span></div>
             <div class="sys-item"><span class="sys-k">数据库</span><span class="sys-v ok">● {{ dash.system.db_status }}</span></div>
-            <div class="sys-item"><span class="sys-k">有效打卡</span><span class="sys-v">{{ dash.effective_checkins }}</span></div>
-            <div class="sys-item"><span class="sys-k">绑定关系</span><span class="sys-v">{{ dash.bindings }}</span></div>
-            <div class="sys-item"><span class="sys-k">位置异常</span><span class="sys-v" :class="dash.geo_risk_checkins>0?'warn-text':''">{{ dash.geo_risk_checkins }}</span></div>
+            <div class="sys-item clickable" @click="goCheckins('all')" title="查看打卡记录"><span class="sys-k">有效打卡</span><span class="sys-v">{{ dash.effective_checkins }}</span></div>
+            <div class="sys-item clickable" @click="goUsers('all')" title="查看绑定关系"><span class="sys-k">绑定关系</span><span class="sys-v">{{ dash.bindings }}</span></div>
+            <div class="sys-item clickable" @click="goCheckins('geo')" title="查看位置异常打卡"><span class="sys-k">位置异常</span><span class="sys-v" :class="dash.geo_risk_checkins>0?'warn-text':''">{{ dash.geo_risk_checkins }}</span></div>
           </div>
           <div class="sys-notifications" v-if="dash.system.notifications.length">
             <h4>🔔 最新通知</h4>
@@ -198,11 +200,17 @@
 
       <!-- 用户管理 -->
       <section v-if="view==='users'">
-        <h2>用户管理</h2>
+        <div class="bar">
+          <h2>用户管理</h2>
+          <div style="flex:1"></div>
+          <button class="mini" :class="{on: userFilter==='all'}" @click="userFilter='all'">全部</button>
+          <button class="mini" :class="{on: userFilter==='student'}" @click="userFilter='student'">学生</button>
+          <button class="mini" :class="{on: userFilter==='parent'}" @click="userFilter='parent'">家长</button>
+        </div>
         <table class="user-table">
           <thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>连续/最长</th><th>有效打卡</th><th>积分</th><th>抽奖券</th><th>绑定码</th></tr></thead>
           <tbody>
-            <tr v-for="u in users" :key="u.id">
+            <tr v-for="u in filteredUsers" :key="u.id">
               <td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.nickname }}</td>
               <td>{{ roleName(u.role) }}</td>
               <td>{{ u.current_streak }}/{{ u.longest_streak }}</td>
@@ -214,7 +222,7 @@
 
         <!-- 手机端卡片列表 -->
         <div class="user-cards">
-          <div class="data-card" v-for="u in users" :key="u.id">
+          <div class="data-card" v-for="u in filteredUsers" :key="u.id">
             <div class="dc-head">
               <span class="dc-title">{{ u.nickname }}</span>
               <span class="muted">@{{ u.username }}</span>
@@ -237,6 +245,7 @@
           <h2>打卡审核 <small class="muted" v-if="pendingCount>0">（待审核 <b style="color:#e67e22">{{ pendingCount }}</b> 条）</small></h2>
           <div style="flex:1"></div>
           <button class="mini" :class="{on: checkinFilter==='pending'}" @click="checkinFilter='pending'; loadCheckins()">待审核</button>
+          <button class="mini" :class="{on: checkinFilter==='geo'}" @click="checkinFilter='geo'; loadCheckins()">位置异常</button>
           <button class="mini" :class="{on: checkinFilter==='all'}" @click="checkinFilter='all'; loadCheckins()">全部</button>
         </div>
         <table class="checkin-table">

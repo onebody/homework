@@ -1,6 +1,10 @@
 "use strict";
 
-const API = "";
+// 自动检测基础路径（支持子路径部署如 /points/）
+const API = (() => {
+  const match = window.location.pathname.match(/^(\/points)/);
+  return match ? match[1] : "";
+})();
 let currentUser = null;
 
 /* ===== 通用工具 ===== */

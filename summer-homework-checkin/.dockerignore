@@ -15,3 +15,8 @@ backups/
 README.md
 CHALLENGE_TASK_SUMMARY.md
 tests/
+# macOS 元数据（AppleDouble 文件含 null bytes，会破坏 alembic 迁移脚本加载）
+._*
+**/._*
+.DS_Store
+**/.DS_Store
