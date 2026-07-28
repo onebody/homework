@@ -346,16 +346,32 @@ class PushConfigIn(BaseModel):
     push_on_submitted: bool = True
     push_on_approved: bool = False
     push_on_rejected: bool = False
+    push_on_challenge: bool = True
     rate_limit_per_min: int = 20
     public_base_url: str | None = None
     outgoing_token: str | None = None
     allow_bot_review: bool = False
+    tpl_daily_title: str | None = None
+    tpl_daily_body: str | None = None
+    tpl_challenge_title: str | None = None
+    tpl_challenge_body: str | None = None
+    tpl_signature: str | None = None
+
+
+class PushTemplatePreviewIn(BaseModel):
+    """推送模板预览请求（用未保存的编辑内容直接预览）。"""
+    kind: str = "daily"  # daily|challenge
+    title_tpl: str | None = None
+    body_tpl: str | None = None
+    signature: str | None = None
 
 
 class PushConfigOut(PushConfigIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
     updated_at: datetime | None = None
+    # 保存时的软警告（如标题模板缺钉钉关键词），不影响保存结果
+    warning: str | None = None
 
 
 class PushLogOut(BaseModel):

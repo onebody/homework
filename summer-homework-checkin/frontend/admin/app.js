@@ -33,6 +33,8 @@ createApp({
       pushLogs: [],           // 推送历史
       pushTesting: "",        // 正在测试的渠道（dingtalk|wechat）
       pushSaving: false,      // 保存中
+      tplPreview: "",         // 模板预览文本
+      tplPreviewWarning: "",  // 模板预览告警（如标题缺关键词）
 
       // ========== 图片查看器 ==========
       viewer: {
@@ -52,7 +54,16 @@ createApp({
       },
     };
   },
-  mounted() { if (this.token) this.bootstrap(); },
+  mounted() {
+    if (this.token) this.bootstrap();
+    // 概览页自动轮询：每 30 秒静默刷新统计，保证数据变化能及时反映到页面
+    this._dashPoll = setInterval(() => {
+      if (this.token && this.view === "dashboard" && !this.dashLoading && !document.hidden) {
+        this.refreshDashboard();
+      }
+    }, 30000);
+  },
+  beforeUnmount() { clearInterval(this._dashPoll); },
   computed: {
     // 当前图片
     currentImage() {
@@ -104,7 +115,7 @@ createApp({
       if (!res.ok) throw new Error(data.detail || "请求失败");
       return data;
     },
-    showToast(m) { this.toast = m; clearTimeout(this.toastTimer); this.toastTimer = setTimeout(() => (this.toast = ""), 2200); },
+    showToast(m, ms = 2200) { this.toast = m; clearTimeout(this.toastTimer); this.toastTimer = setTimeout(() => (this.toast = ""), ms); },
     // 卡片缩略图地址补全（模板中无法调用全局 fixUrl，这里暴露为实例方法）
     thumbUrl(url) { return fixUrl(url); },
     async bootstrap() {
@@ -176,11 +187,14 @@ createApp({
       if (!this.pushConfig) return;
       this.pushSaving = true;
       try {
-        this.pushConfig = await this.api("/api/admin/push-config", {
+        const d = await this.api("/api/admin/push-config", {
           method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(this.pushConfig),
         });
-        this.showToast("推送配置已保存");
+        const warn = d.warning;
+        delete d.warning;  // 软警告不属于配置本身，不回填表单
+        this.pushConfig = d;
+        this.showToast(warn ? "已保存 ⚠️ " + warn : "推送配置已保存", warn ? 6000 : 2200);
       } catch (e) { this.showToast(e.message); }
       finally { this.pushSaving = false; }
     },
@@ -198,6 +212,24 @@ createApp({
       } catch (e) { this.showToast(e.message); }
       finally { this.pushTesting = ""; }
     },
+    async previewTemplate(kind) {
+      // 用界面上未保存的编辑内容直接预览（样例数据渲染，不保存不外发）
+      const c = this.pushConfig || {};
+      const body = {
+        kind,
+        title_tpl: kind === "daily" ? c.tpl_daily_title : c.tpl_challenge_title,
+        body_tpl: kind === "daily" ? c.tpl_daily_body : c.tpl_challenge_body,
+        signature: c.tpl_signature,
+      };
+      try {
+        const d = await this.api("/api/admin/push-config/preview", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        this.tplPreview = d.text;
+        this.tplPreviewWarning = d.warning || "";
+      } catch (e) { this.showToast(e.message); }
+    },
     async loadPushLogs() {
       try { this.pushLogs = await this.api("/api/admin/push-logs?limit=50"); }
       catch (e) { this.showToast(e.message); }
@@ -206,7 +238,10 @@ createApp({
       return { success: "成功", failed: "失败", skipped: "跳过" }[s] || s;
     },
     pushEventLabel(t) {
-      return { submitted: "提交待审", approved: "审核通过", rejected: "审核拒绝", test: "测试", command: "群指令" }[t] || t;
+      return {
+        submitted: "提交待审", approved: "审核通过", rejected: "审核拒绝", test: "测试", command: "群指令",
+        ch_submitted: "闯关提交", ch_approved: "闯关通过", ch_rejected: "闯关拒绝",
+      }[t] || t;
     },
     pushChannelLabel(c) {
       return { dingtalk: "钉钉", wechat: "企微" }[c] || c;
@@ -223,21 +258,38 @@ createApp({
       this.dashLoading = true;
       try {
         this.dash = await this.api("/api/admin/dashboard");
-        this.stats = this.dash; // 兼容原有引用
+        this.stats = this.dash; // 兼容原有引用（dashboard 与 stats 后端已统一口径）
         this.$nextTick(() => this.renderCharts());
       } catch (e) { /* 静默失败 */ }
       finally { this.dashLoading = false; }
     },
     renderCharts() {
       if (!this.dash || typeof Chart === 'undefined') return;
-      // 销毁旧图表
-      if (this._trendChart) { this._trendChart.destroy(); this._trendChart = null; }
-      if (this._pieChart) { this._pieChart.destroy(); this._pieChart = null; }
-      if (this._barChart) { this._barChart.destroy(); this._barChart = null; }
-
       const trendEl = this.$refs.trendChart;
       const pieEl = this.$refs.pieChart;
       const barEl = this.$refs.barChart;
+
+      // 图表已存在且仍绑定当前 canvas 时原地更新数据（轮询刷新不闪烁），否则重建
+      if (this._trendChart && this._pieChart && this._barChart
+          && this._trendChart.canvas === trendEl && this._pieChart.canvas === pieEl && this._barChart.canvas === barEl) {
+        this._trendChart.data.labels = this.dash.trend_30d.map(t => t.date.slice(5));
+        this._trendChart.data.datasets[0].data = this.dash.trend_30d.map(t => t.count);
+        this._trendChart.update('none');
+        const ud = this.dash.user_distribution;
+        this._pieChart.data.datasets[0].data = [ud.student, ud.parent, ud.admin];
+        this._pieChart.update('none');
+        const pd = this.dash.prize_distribution;
+        const catMap = { stationery: '文具', outdoor: '户外', interest: '兴趣' };
+        this._barChart.data.labels = Object.keys(pd).map(k => catMap[k] || k);
+        this._barChart.data.datasets[0].data = Object.values(pd);
+        this._barChart.update('none');
+        return;
+      }
+
+      // 销毁残留图表（如切换视图后 canvas 已重建）
+      if (this._trendChart) { this._trendChart.destroy(); this._trendChart = null; }
+      if (this._pieChart) { this._pieChart.destroy(); this._pieChart = null; }
+      if (this._barChart) { this._barChart.destroy(); this._barChart = null; }
 
       // 近 30 天打卡趋势折线图
       if (trendEl && this.dash.trend_30d) {
@@ -382,7 +434,8 @@ createApp({
         this.showToast(status === 'approved' ? "已兑现" : "已拒绝");
         this.reviewingRedeem = null;
         await this.loadRedeems();
-        this.stats = await this.api("/api/admin/stats");
+        // 刷新概览统计（页面绑定的是 dash，必须刷 dashboard 才能实时反映）
+        await this.refreshDashboard();
       } catch (e) {
         this.showToast(e.message || "操作失败");
       }
@@ -433,7 +486,8 @@ createApp({
         this.showToast(this.reviewing.status === "approved" ? "已通过" : "已拒绝");
         this.reviewing = null;
         await this.loadCheckins();
-        this.stats = await this.api("/api/admin/stats");
+        // 刷新概览统计（页面绑定的是 dash，必须刷 dashboard 才能实时反映）
+        await this.refreshDashboard();
       } catch (e) {
         this.showToast(e.message || "操作失败");
       }

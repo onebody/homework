@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>打卡系统 · 后台管理</title>
-  <link rel="stylesheet" href="./admin.css?v=20260731" />
+  <link rel="stylesheet" href="./admin.css?v=20260807" />
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.4.27/vue.global.prod.js"></script>
   <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -32,7 +32,7 @@
     <aside class="side">
       <div class="brand">📚 打卡管理后台</div>
       <div class="menu">
-        <div :class="{on:view==='dashboard'}" @click="view='dashboard'">📈 数据概览</div>
+        <div :class="{on:view==='dashboard'}" @click="view='dashboard'; refreshDashboard()">📈 数据概览</div>
         <div :class="{on:view==='prizes'}" @click="view='prizes'">🎁 奖品管理</div>
         <div :class="{on:view==='users'}" @click="view='users'">👥 用户管理</div>
         <div class="tab-redeems" :class="{on:view==='redeems'}" @click="loadRedeems">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
@@ -564,12 +564,18 @@
               </div>
             </label>
           </div>
+          <p class="muted">「测试」会先保存配置，再用当前模板渲染样例数据发送（严格按模板，不加任何前后缀）——收到的就是真实推送效果。</p>
 
           <div class="push-row push-types">
             <span class="push-label">推送事件类型：</span>
             <label><input type="checkbox" v-model="pushConfig.push_on_submitted" /> 打卡提交（待审核）</label>
             <label><input type="checkbox" v-model="pushConfig.push_on_approved" /> 审核通过</label>
             <label><input type="checkbox" v-model="pushConfig.push_on_rejected" /> 审核拒绝</label>
+          </div>
+
+          <div class="push-row push-types">
+            <span class="push-label">闯关打卡推送：</span>
+            <label><input type="checkbox" v-model="pushConfig.push_on_challenge" /> 启用（闯关提交/审核结果同样推送，事件类型沿用上方勾选）</label>
           </div>
 
           <div class="push-row push-inline">
@@ -579,6 +585,48 @@
             <label>公网访问基址（可选，用于消息内拼照片链接）
               <input v-model="pushConfig.public_base_url" placeholder="例如 https://example.com" />
             </label>
+          </div>
+
+          <div class="push-divider">📝 消息模板（已预填默认文案，可直接修改，保存后立即生效）</div>
+
+          <p class="muted">支持占位符：日常打卡 <code v-pre>{nickname} {type} {status} {time} {photo} {photo_line} {geo_warn}</code>；
+            闯关打卡 <code v-pre>{nickname} {task} {status} {time} {points} {points_line} {reason} {reason_line}</code>。
+            带 <code>_line</code> 后缀的为整行变量，无内容时自动隐藏整行；系统严格按模板发送、不自动添加任何前后缀，若钉钉机器人设置了关键词过滤，请确保标题含对应关键词。
+            标题/正文清空保存后自动恢复默认模板；签名清空则不追加。</p>
+
+          <div class="push-row">
+            <label class="push-url">日常打卡 · 标题模板
+              <input v-model="pushConfig.tpl_daily_title" placeholder="【暑假打卡】{nickname} {type} {status}" />
+            </label>
+          </div>
+          <div class="push-row">
+            <label class="push-url">日常打卡 · 正文模板（可多行）
+              <textarea v-model="pushConfig.tpl_daily_body" rows="3" placeholder="时间：{time}&#10;{geo_warn}&#10;{photo_line}"></textarea>
+            </label>
+          </div>
+          <div class="push-row">
+            <label class="push-url">闯关打卡 · 标题模板
+              <input v-model="pushConfig.tpl_challenge_title" placeholder="【暑假打卡】{nickname} 闯关「{task}」{status}" />
+            </label>
+          </div>
+          <div class="push-row">
+            <label class="push-url">闯关打卡 · 正文模板（可多行）
+              <textarea v-model="pushConfig.tpl_challenge_body" rows="3" placeholder="时间：{time}&#10;{points_line}&#10;{reason_line}"></textarea>
+            </label>
+          </div>
+          <div class="push-row">
+            <label class="push-url">签名（追加到每条消息末尾，清空则不追加）
+              <input v-model="pushConfig.tpl_signature" placeholder="例如：—— 暑假作业打卡系统" />
+            </label>
+          </div>
+          <div class="push-row push-types">
+            <button class="mini" @click="previewTemplate('daily')">预览日常打卡</button>
+            <button class="mini" @click="previewTemplate('challenge')">预览闯关打卡</button>
+          </div>
+          <div v-if="tplPreview" class="tpl-preview">
+            <div class="tpl-preview-head">预览（样例数据）<button class="mini" @click="tplPreview=''">关闭</button></div>
+            <pre>{{ tplPreview }}</pre>
+            <p v-if="tplPreviewWarning" class="muted" style="color:#d9534f">⚠️ {{ tplPreviewWarning }}</p>
           </div>
 
           <div class="push-divider">🤖 双向消息（群里 @机器人 查询/审核，仅钉钉）</div>
@@ -863,6 +911,6 @@
   </div>
 </div>
 
-<script src="./app.js?v=20260731"></script>
+<script src="./app.js?v=20260807"></script>
 </body>
 </html>

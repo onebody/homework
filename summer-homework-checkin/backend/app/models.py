@@ -6,6 +6,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from .database import Base
+from .config import DEFAULT_PUSH_TEMPLATES
 from .utils.timeutil import now_local
 
 
@@ -234,10 +235,21 @@ class PushConfig(Base):
     push_on_submitted = Column(Boolean, default=True)       # 推送：打卡提交（待审核）
     push_on_approved = Column(Boolean, default=False)       # 推送：审核通过
     push_on_rejected = Column(Boolean, default=False)       # 推送：审核拒绝
+    push_on_challenge = Column(Boolean, default=True)       # 推送：闯关打卡（独立开关，事件类型沿用上面三项）
     rate_limit_per_min = Column(Integer, default=20)        # 每分钟最大推送条数，0=不限
     public_base_url = Column(String(256), nullable=True)    # 公网访问基址（用于拼照片链接，可选）
     outgoing_token = Column(String(128), nullable=True)     # 钉钉 Outgoing 验签 Token（双向消息）
     allow_bot_review = Column(Boolean, default=False)       # 允许群内通过机器人审核打卡
+    tpl_daily_title = Column(String(256), nullable=True,
+                             default=DEFAULT_PUSH_TEMPLATES["daily_title"])      # 模板：日常打卡标题（预填默认，可编辑）
+    tpl_daily_body = Column(Text, nullable=True,
+                            default=DEFAULT_PUSH_TEMPLATES["daily_body"])        # 模板：日常打卡正文
+    tpl_challenge_title = Column(String(256), nullable=True,
+                                 default=DEFAULT_PUSH_TEMPLATES["challenge_title"])  # 模板：闯关打卡标题
+    tpl_challenge_body = Column(Text, nullable=True,
+                                default=DEFAULT_PUSH_TEMPLATES["challenge_body"])    # 模板：闯关打卡正文
+    tpl_signature = Column(String(256), nullable=True,
+                           default=DEFAULT_PUSH_TEMPLATES["signature"])          # 模板：签名（清空则不追加）
     updated_at = Column(DateTime, default=now_local)
 
 
@@ -247,7 +259,7 @@ class PushLog(Base):
 
     id = Column(Integer, primary_key=True)
     channel = Column(String(16), nullable=False)             # dingtalk|wechat
-    event_type = Column(String(16), nullable=False)          # submitted|approved|rejected|test
+    event_type = Column(String(16), nullable=False)         # submitted|approved|rejected|ch_*|test
     title = Column(String(256), nullable=True)               # 推送消息摘要
     status = Column(String(16), nullable=False)              # success|failed|skipped
     error = Column(String(512), nullable=True)               # 失败/跳过原因

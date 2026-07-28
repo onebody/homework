@@ -103,3 +103,13 @@ FACE_MODEL_NAME = "buffalo_l"    # insightface 预训练模型（检测+识别�
 #   enforce  -> 已采集底图后，人脸不通过则拒绝打卡（最强防代打卡）
 #   soft     -> 已采集底图后，人脸不通过仅标记高风险但仍记录（容错优先）
 FACE_MODE_ON_ENROLLED = os.environ.get("FACE_MODE_ON_ENROLLED", "enforce")
+
+# 消息推送默认模板（首次初始化预填到 push_config，后台可自定义编辑；
+# 标题/正文清空保存后推送时回退到这里的内置值，签名清空则不追加）
+DEFAULT_PUSH_TEMPLATES = {
+    "daily_title": "【暑假打卡】{nickname} {type} {status}",
+    "daily_body": "时间：{time}\n{geo_warn}\n{photo_line}",
+    "challenge_title": "【暑假打卡】{nickname} 闯关「{task}」{status}",
+    "challenge_body": "时间：{time}\n{points_line}\n{reason_line}",
+    "signature": "—— 暑假作业打卡系统",
+}

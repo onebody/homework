@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..models import ChallengeTask, ChallengeCheckIn, User, Notification
 from ..utils.timeutil import now_local
+from .webhook_push_service import push_challenge_event
 
 
 def _make_naive(dt: datetime) -> datetime:
@@ -174,6 +175,8 @@ def submit_checkin(db: Session, user: User, task_id: int, data: dict) -> dict:
 
     # 通知管理员
     _notify_admins(db, user.nickname, task.name)
+    # Webhook 推送（异步，受后台闯关推送开关控制）
+    push_challenge_event(record.id, "submitted")
     return {"id": record.id, "message": "打卡已提交，等待审核"}
 
 
@@ -233,6 +236,8 @@ def review_checkin(db: Session, checkin: ChallengeCheckIn, action: str, note: st
     else:
         raise ValueError("无效的审核操作")
     db.commit()
+    # Webhook 推送审核结果（异步，受后台闯关推送开关控制）
+    push_challenge_event(checkin.id, "approved" if action == "approve" else "rejected")
 
 
 def list_all_checkins(db: Session, task_id: int = None, status: str = None) -> list:

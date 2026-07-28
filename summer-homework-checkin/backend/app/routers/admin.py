@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from ..models import User, CheckIn, StudentParent, Redemption, Prize, LotteryRecord, Notification, PushLog
 from ..database import get_db
-from ..schemas import ReviewRequest, PushConfigIn, PushConfigOut, PushLogOut, PushTestRequest, SiteConfigIn, SiteConfigOut
-from ..config import SUMMER_START, SUMMER_END, CHECKIN_POINTS, MAKEUP_POINTS
+from ..schemas import ReviewRequest, PushConfigIn, PushConfigOut, PushLogOut, PushTestRequest, PushTemplatePreviewIn, SiteConfigIn, SiteConfigOut
+from ..config import SUMMER_START, SUMMER_END, CHECKIN_POINTS, MAKEUP_POINTS, DEFAULT_PUSH_TEMPLATES
 from ..deps import require_role
 from ..utils.timeutil import now_local
 from ..services import checkin_service
@@ -20,32 +20,36 @@ _SERVER_START = _time.time()
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-@router.get("/stats")
-def stats(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    students = db.query(User).filter_by(role="student").count()
-    parents = db.query(User).filter_by(role="parent").count()
-    checkins = db.query(CheckIn).filter(CheckIn.is_effective == True).count()
-    binds = db.query(StudentParent).count()
-    geo_risk = db.query(CheckIn).filter(CheckIn.geo_flag == True).count()
-    # 兑换统计
-    redeem_pending = db.query(Redemption).filter(Redemption.status == "pending").count()
-    redeem_approved = db.query(Redemption).filter(Redemption.status == "fulfilled").count()
-    redeem_rejected = db.query(Redemption).filter(Redemption.status == "rejected").count()
+def _core_stats(db: Session) -> dict:
+    """stats 与 dashboard 共用的统计口径，保证两接口数据一致。
+
+    - 打卡量类指标（有效打卡、位置异常）限定暑假统计窗口，与 summer_window 标注一致；
+    - 待审核/待兑换等属于操作队列，全量统计（窗口外的待办同样需要处理）。
+    """
+    in_window = (CheckIn.check_date >= SUMMER_START, CheckIn.check_date <= SUMMER_END)
     return {
-        "students": students, "parents": parents,
-        "effective_checkins": checkins, "bindings": binds,
-        "geo_risk_checkins": geo_risk,
-        "redeem_pending": redeem_pending,
-        "redeem_approved": redeem_approved,
-        "redeem_rejected": redeem_rejected,
+        "students": db.query(User).filter_by(role="student").count(),
+        "parents": db.query(User).filter_by(role="parent").count(),
+        "effective_checkins": db.query(CheckIn).filter(CheckIn.is_effective == True, *in_window).count(),
+        "bindings": db.query(StudentParent).count(),
+        "geo_risk_checkins": db.query(CheckIn).filter(CheckIn.geo_flag == True, *in_window).count(),
+        "redeem_pending": db.query(Redemption).filter(Redemption.status == "pending").count(),
+        "redeem_approved": db.query(Redemption).filter(Redemption.status == "fulfilled").count(),
+        "redeem_rejected": db.query(Redemption).filter(Redemption.status == "rejected").count(),
         "summer_window": f"{SUMMER_START} ~ {SUMMER_END}",
     }
+
+
+@router.get("/stats")
+def stats(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
+    return _core_stats(db)
 
 
 @router.get("/dashboard")
 def dashboard(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
     """富统计仪表盘：多维度统计 + 图表数据 + 系统状态。"""
-    today = date.today()
+    # 统一使用北京时间取「今天」，不依赖容器时区设置
+    today = now_local().date()
     month_start = today.replace(day=1)
 
     # ---- 基础统计 ----
@@ -78,8 +82,8 @@ def dashboard(_: User = Depends(require_role("admin")), db: Session = Depends(ge
     pending_checkins = db.query(CheckIn).filter(CheckIn.review_status == "pending").count()
     pending_redemptions = db.query(Redemption).filter(Redemption.status == "pending").count()
 
-    # 本月最高连续打卡天数
-    max_streak_month = db.query(func.max(User.current_streak)).filter(
+    # 最高连续打卡天数（取学生历史最长记录，断签不会导致数字回落）
+    max_streak_month = db.query(func.max(User.longest_streak)).filter(
         User.role == "student"
     ).scalar() or 0
 
@@ -133,14 +137,8 @@ def dashboard(_: User = Depends(require_role("admin")), db: Session = Depends(ge
         "pending_redemptions": pending_redemptions,
         "max_streak_month": max_streak_month,
         "avg_daily_checkins": avg_daily_checkins,
-        # 原有字段兼容
-        "effective_checkins": db.query(CheckIn).filter(CheckIn.is_effective == True).count(),
-        "bindings": db.query(StudentParent).count(),
-        "geo_risk_checkins": db.query(CheckIn).filter(CheckIn.geo_flag == True).count(),
-        "redeem_pending": pending_redemptions,
-        "redeem_approved": db.query(Redemption).filter(Redemption.status == "fulfilled").count(),
-        "redeem_rejected": db.query(Redemption).filter(Redemption.status == "rejected").count(),
-        "summer_window": f"{SUMMER_START} ~ {SUMMER_END}",
+        # 原有字段兼容（与 /stats 共用 _core_stats 口径，保证两接口一致）
+        **_core_stats(db),
         # 图表
         "trend_30d": trend,
         "user_distribution": user_distribution,
@@ -366,12 +364,21 @@ def get_push_config(_: User = Depends(require_role("admin")), db: Session = Depe
 
 @router.put("/push-config", response_model=PushConfigOut)
 def save_push_config(req: PushConfigIn, _: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    """保存推送配置，非空 Webhook URL 需通过前缀校验。"""
+    """保存推送配置，非空 Webhook URL 需通过前缀校验。
+
+    标题模板不含钉钉关键词时不拒绝保存（发送侧会自动补前缀），
+    仅通过响应的 warning 字段软提醒管理员。
+    """
     for channel, url in (("dingtalk", req.dingtalk_url), ("wechat", req.wechat_url)):
         if url:
             err = webhook_push_service.validate_webhook_url(channel, url.strip())
             if err:
                 raise HTTPException(status_code=400, detail=err)
+    warnings = []
+    for label, tpl in (("日常打卡", req.tpl_daily_title), ("闯关打卡", req.tpl_challenge_title)):
+        err = webhook_push_service.validate_template_title((tpl or "").strip())
+        if err:
+            warnings.append(f"{label}{err}")
     cfg = webhook_push_service.get_config(db)
     cfg.enabled = req.enabled
     cfg.dingtalk_url = (req.dingtalk_url or "").strip() or None
@@ -379,14 +386,24 @@ def save_push_config(req: PushConfigIn, _: User = Depends(require_role("admin"))
     cfg.push_on_submitted = req.push_on_submitted
     cfg.push_on_approved = req.push_on_approved
     cfg.push_on_rejected = req.push_on_rejected
+    cfg.push_on_challenge = req.push_on_challenge
     cfg.rate_limit_per_min = max(0, req.rate_limit_per_min)
     cfg.public_base_url = (req.public_base_url or "").strip() or None
     cfg.outgoing_token = (req.outgoing_token or "").strip() or None
     cfg.allow_bot_review = req.allow_bot_review
+    # 标题/正文清空时回填内置默认模板（界面始终有可编辑的起点）；签名清空存空串表示不追加
+    _tpl_defaults = DEFAULT_PUSH_TEMPLATES
+    cfg.tpl_daily_title = (req.tpl_daily_title or "").strip() or _tpl_defaults["daily_title"]
+    cfg.tpl_daily_body = (req.tpl_daily_body or "").strip() or _tpl_defaults["daily_body"]
+    cfg.tpl_challenge_title = (req.tpl_challenge_title or "").strip() or _tpl_defaults["challenge_title"]
+    cfg.tpl_challenge_body = (req.tpl_challenge_body or "").strip() or _tpl_defaults["challenge_body"]
+    cfg.tpl_signature = (req.tpl_signature or "").strip()
     cfg.updated_at = now_local()
     db.commit()
     db.refresh(cfg)
-    return cfg
+    out = PushConfigOut.model_validate(cfg)
+    out.warning = "；".join(warnings) or None
+    return out
 
 
 @router.post("/push-config/test")
@@ -396,6 +413,17 @@ def test_push(req: PushTestRequest, _: User = Depends(require_role("admin")), db
         raise HTTPException(status_code=400, detail="channel 必须是 dingtalk 或 wechat")
     err = webhook_push_service.send_test(db, req.channel)
     return {"ok": err is None, "error": err}
+
+
+@router.post("/push-config/preview")
+def preview_push_template(req: PushTemplatePreviewIn, _: User = Depends(require_role("admin"))):
+    """用样例数据预览推送模板渲染效果（不保存、不外发）。"""
+    if req.kind not in ("daily", "challenge"):
+        raise HTTPException(status_code=400, detail="kind 必须是 daily 或 challenge")
+    err = webhook_push_service.validate_template_title((req.title_tpl or "").strip())
+    text = webhook_push_service.render_preview(
+        req.kind, (req.title_tpl or "").strip(), (req.body_tpl or "").strip(), req.signature or "")
+    return {"text": text, "warning": err}
 
 
 @router.get("/push-logs", response_model=list[PushLogOut])
