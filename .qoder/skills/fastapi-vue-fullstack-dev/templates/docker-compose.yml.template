@@ -1,0 +1,43 @@
+# 应用服务编排模板（nginx 建议独立编排，经外部共享网络互通）
+# 使用：
+#   docker network create shared-net        # 首次创建共享网络
+#   docker compose up -d --build
+# 停止：docker compose down（不带 -v，保留数据卷）
+
+services:
+  myapp:
+    build:
+      context: ./myapp
+      dockerfile: Dockerfile
+    container_name: myapp
+    ports:
+      - "9000:8000"          # 宿主机端口用 9 开头 4-5 位，容器内统一 8000
+    environment:
+      # 数据库与上传目录重定向到持久化卷
+      DB_PATH: /data/app.db
+      UPLOAD_DIR: /data/uploads
+      # 安全配置（必须通过 .env 或环境变量注入强随机密钥，缺失直接报错）
+      APP_SECRET: ${APP_SECRET:?请在 .env 或环境变量中设置 APP_SECRET}
+      ALLOWED_ORIGINS: http://localhost:9000,http://127.0.0.1:9000
+      # 初始管理员密码（仅本地测试；未设置则 seed 自动生成随机密码）
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
+      # 速率限制（默认开启，压测可设为 0）
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-1}
+    volumes:
+      - myapp-data:/data
+    networks:
+      - shared-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s      # 启动迁移需要时间，给足缓冲
+
+volumes:
+  myapp-data:
+
+networks:
+  shared-net:
+    external: true

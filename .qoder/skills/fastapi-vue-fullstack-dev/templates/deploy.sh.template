@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# 增量部署脚本骨架（通用化模板，替换 myapp/APP_* 为实际值）
+#
+# 用法：
+#   ./deploy.sh local                                        # 本地 Docker 增量部署
+#   DEPLOY_SSH_HOST=<IP> DEPLOY_SSH_PASS=xxx ./deploy.sh prod  # 生产增量部署
+#
+# 环境变量（凭据/配置一律不硬编码）：
+#   DEPLOY_SSH_HOST / DEPLOY_SSH_PASS / DEPLOY_SSH_USER(默认root) / DEPLOY_SSH_PORT(默认22)
+#   DEPLOY_APP_PORT       默认 9000
+#   DEPLOY_DATA_DIR       服务器数据目录，默认 /opt/myapp-deploy/data（先 docker inspect 核实！）
+#   DEPLOY_ALLOWED_ORIGINS 默认沿用现有容器配置，避免覆盖线上来源
+#   DEPLOY_SYSTEMD_UNIT   托管容器的 systemd 单元名，默认 myapp
+#   DEPLOY_HEALTH_TIMEOUT 健康检查最长等待秒数，默认 180
+set -euo pipefail
+
+APP=myapp
+IMG=myapp-img
+MODE="${1:?用法: deploy.sh local|prod}"
+
+log()  { echo "[$(date +%H:%M:%S)] $*"; }
+die()  { echo "[ERROR] $*" >&2; exit 1; }
+
+# ---------------- 本地部署 ----------------
+if [[ "$MODE" == "local" ]]; then
+    docker compose build "$APP"
+    docker compose up -d "$APP"
+    log "等待本地服务就绪（启动含数据库迁移，轮询而非固定 sleep）..."
+    for _ in $(seq 1 40); do
+        curl -sf "http://localhost:8000/api/health" >/dev/null 2>&1 && { log "本地部署成功"; exit 0; }
+        sleep 3
+    done
+    die "本地健康检查超时，查看: docker logs $APP"
+fi
+
+# ---------------- 生产部署 ----------------
+SSH_USER="${DEPLOY_SSH_USER:-root}"
+SSH_HOST="${DEPLOY_SSH_HOST:?请设置 DEPLOY_SSH_HOST}"
+SSH_PASS="${DEPLOY_SSH_PASS:?请设置 DEPLOY_SSH_PASS}"
+SSH_PORT="${DEPLOY_SSH_PORT:-22}"
+APP_PORT="${DEPLOY_APP_PORT:-9000}"
+DATA_DIR="${DEPLOY_DATA_DIR:-/opt/myapp-deploy/data}"
+UNIT="${DEPLOY_SYSTEMD_UNIT:-myapp}"
+HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-180}"
+TS="$(date +%Y%m%d_%H%M%S)"
+
+rexec() { sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "$@"; }
+
+# 0) 探测 systemd 托管（否则 docker stop 后看门狗会拉起旧容器导致撞名）
+USE_SYSTEMD=false
+rexec "systemctl cat ${UNIT}.service" >/dev/null 2>&1 && USE_SYSTEMD=true
+
+# 沿用线上 CORS 白名单，避免覆盖公网入口
+ORIGINS="${DEPLOY_ALLOWED_ORIGINS:-}"
+[[ -z "$ORIGINS" ]] && ORIGINS="$(rexec "docker inspect $APP --format '{{range .Config.Env}}{{println .}}{{end}}'" 2>/dev/null | sed -n 's/^ALLOWED_ORIGINS=//p' | tr -d '\r' || true)"
+
+# 1) WAL 感知备份（容器内 sqlite3 backup API），失败回退文件级复制
+log "备份数据库..."
+rexec "docker exec $APP python -c \"import sqlite3;s=sqlite3.connect('/data/app.db');d=sqlite3.connect('/data/backups/app_$TS.db');s.backup(d)\"" \
+    || rexec "cp $DATA_DIR/app.db $DATA_DIR/backups/app_$TS.db" \
+    || die "备份失败，中止部署"
+
+# 2) 打包上传源码（排除数据与生成物），服务器本机构建（避免跨架构问题）
+log "传输源码并构建镜像..."
+tar czf /tmp/${APP}_src.tgz --exclude venv --exclude __pycache__ --exclude '*.db*' --exclude uploads .
+sshpass -p "$SSH_PASS" scp -P "$SSH_PORT" /tmp/${APP}_src.tgz "$SSH_USER@$SSH_HOST:/tmp/"
+rexec "mkdir -p /opt/${APP}-src && tar xzf /tmp/${APP}_src.tgz -C /opt/${APP}-src && cd /opt/${APP}-src && docker build -t $IMG ." || die "镜像构建失败"
+
+# 3) 停旧容器（systemd 感知）→ 删除（失败必中断）→ create → 启动
+if [[ "$USE_SYSTEMD" == "true" ]]; then rexec "systemctl stop $UNIT" || true
+else rexec "docker stop -t 15 $APP" || true; fi
+
+if ! rexec "for i in 1 2 3; do docker rm $APP >/dev/null 2>&1 && exit 0; docker stop -t 15 $APP >/dev/null 2>&1; sleep 3; done; docker ps -a --format '{{.Names}}' | grep -qx $APP && exit 1; exit 0"; then
+    [[ "$USE_SYSTEMD" == "true" ]] && rexec "systemctl start $UNIT" || true
+    die "旧容器无法删除（可能被看门狗拉起），已尝试恢复服务"
+fi
+
+rexec "docker create --name $APP --restart unless-stopped -p $APP_PORT:8000 \
+    -e DB_PATH=/data/app.db -e UPLOAD_DIR=/data/uploads \
+    -e APP_SECRET=\$(cat $DATA_DIR/.secret_key) -e ALLOWED_ORIGINS='$ORIGINS' \
+    -v $DATA_DIR:/data $IMG" || die "容器创建失败"
+
+if [[ "$USE_SYSTEMD" == "true" ]]; then rexec "systemctl start $UNIT"; else rexec "docker start $APP"; fi
+
+# 4) 健康检查轮询（迁移耗时不定，禁止固定 sleep + 单次 curl）
+log "等待生产服务就绪（上限 ${HEALTH_TIMEOUT}s）..."
+rexec "APP_PORT=$APP_PORT T=$HEALTH_TIMEOUT sh -c 'i=0; while [ \$i -lt \$((T/3)) ]; do curl -sf http://localhost:\$APP_PORT/api/health >/dev/null && exit 0; sleep 3; i=\$((i+1)); done; exit 1'" \
+    || die "生产健康检查超时，查看: docker logs $APP"
+
+# 5) 镜像一致性校验：容器跑的必须是刚构建的镜像
+RUNNING=$(rexec "docker inspect $APP --format '{{.Image}}'")
+TAGGED=$(rexec "docker inspect $IMG --format '{{.Id}}'")
+[[ "$RUNNING" == "$TAGGED" ]] || die "容器仍在跑旧镜像！running=$RUNNING tagged=$TAGGED"
+
+log "生产部署成功。备份: $DATA_DIR/backups/app_$TS.db"

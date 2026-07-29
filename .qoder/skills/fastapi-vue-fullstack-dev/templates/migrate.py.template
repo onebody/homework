@@ -1,0 +1,134 @@
+"""自动迁移入口：在应用启动前执行数据库迁移和种子数据初始化。
+
+用法：
+    python migrate.py              # 备份 + 迁移 + 回填 + 种子（Docker CMD 默认）
+    python migrate.py --migrate    # 仅执行迁移
+    python migrate.py --seed       # 仅执行种子数据
+    python migrate.py --backup     # 仅备份数据库
+"""
+import os
+import sys
+import shutil
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.config import DB_PATH
+from app.database import engine, Base
+
+
+def backup_db():
+    """备份当前数据库文件（容错：备份失败不得阻断应用启动）。"""
+    if not os.path.exists(DB_PATH):
+        print("数据库文件不存在，跳过备份")
+        return
+    try:
+        backup_dir = os.path.join(os.path.dirname(DB_PATH), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 注：WAL 模式下更严谨的做法是 sqlite3.Connection.backup()
+        import sqlite3
+        src = sqlite3.connect(DB_PATH)
+        dst = sqlite3.connect(os.path.join(backup_dir, f"app_{ts}.db"))
+        src.backup(dst)
+        dst.close()
+        src.close()
+        print(f"数据库已备份: app_{ts}.db")
+    except Exception as e:
+        # 备份仅为防护措施，权限/磁盘等问题不应导致容器无法启动
+        print(f"数据库备份失败（已忽略，不影响启动）: {e}")
+
+
+def run_migrations():
+    """执行 Alembic 数据库迁移（三场景兜底，严禁重置数据库）。"""
+    from alembic.config import Config
+    from alembic import command
+
+    alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+    alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
+
+    # 探测数据库状态：核心表是否存在、alembic_version 是否有记录
+    db_exists = os.path.exists(DB_PATH)
+    has_alembic_record = False
+    has_core_table = False
+    if db_exists:
+        import sqlite3
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'")
+            if cur.fetchone():
+                cur.execute("SELECT COUNT(*) FROM alembic_version")
+                has_alembic_record = cur.fetchone()[0] > 0
+            # TODO: 替换 'users' 为你的核心表名
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+            has_core_table = cur.fetchone() is not None
+            conn.close()
+        except Exception:
+            pass
+
+    if not db_exists or not has_core_table:
+        # 场景1 首次部署：create_all 建表 + stamp 到最新版本
+        print("首次部署，使用 create_all 创建表结构...")
+        Base.metadata.create_all(bind=engine)
+        _stamp_head()
+    elif not has_alembic_record:
+        # 场景2 已有数据但未追踪迁移版本：stamp，跳过迁移
+        print("已有数据库但未追踪迁移版本，标记版本...")
+        _stamp_head()
+    else:
+        # 场景3 正常增量迁移
+        try:
+            command.upgrade(alembic_cfg, "head")
+            print("数据库迁移完成")
+        except Exception as e:
+            print(f"迁移异常: {e}，使用 create_all 确保表结构存在...")
+            Base.metadata.create_all(bind=engine)
+
+
+def _stamp_head():
+    """将 alembic_version 直接写为当前 head（绕过 alembic stamp 的编码问题）。"""
+    try:
+        from alembic.script import ScriptDirectory
+        from alembic.config import Config
+        cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        cfg.set_main_option("sqlalchemy.url", "sqlite:///" + str(DB_PATH))
+        head = ScriptDirectory.from_config(cfg).get_current_head()
+        if not head:
+            return
+        import sqlite3
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.execute("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("DELETE FROM alembic_version")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES (?)", (head,))
+        conn.commit()
+        conn.close()
+        print(f"已标记迁移版本: {head}")
+    except Exception as e:
+        print(f"stamp 失败: {e}")
+
+
+def run_seed():
+    """执行种子数据初始化（seed.py 必须幂等：存在即跳过）。"""
+    from seed import seed
+    seed()
+
+
+def main():
+    args = sys.argv[1:]
+    if "--backup" in args:
+        backup_db(); return
+    if "--migrate" in args:
+        run_migrations(); return
+    if "--seed" in args:
+        run_seed(); return
+    # 默认完整流程
+    backup_db()
+    run_migrations()
+    # 此处可插入数据回填逻辑（为存量行补全新增字段）
+    run_seed()
+    print("数据库准备就绪")
+
+
+if __name__ == "__main__":
+    main()
