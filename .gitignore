@@ -43,4 +43,7 @@ venv/
 
 # ===== IDE 本机设置与临时验证产物 =====
 .qoder/settings.local.json
+
+# ===== 本地技能文件（不入库）=====
+.qoder/skills/
 admin-dashboard-screenshot.png
