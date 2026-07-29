@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>暑假作业打卡平台</title>
-  <link rel="stylesheet" href="./student.css?v=20260731" />
+  <link rel="stylesheet" href="./student.css?v=20260808" />
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.4.27/vue.global.prod.js"></script>
 </head>
 <body>
@@ -144,7 +144,7 @@
           {{ locText }}
         </button>
         <button class="primary big" v-if="photoData" :disabled="submitting" @click="submitCheckin">
-          {{ isMakeup ? '提交补卡（+5 积分）' : (isParent ? '代孩子完成打卡（+10 积分）' : '完成打卡（+10 积分）') }}
+          {{ isMakeup ? ('提交补卡（+' + pointsRule.makeup + ' 积分）') : (isParent ? ('代孩子完成打卡（+' + pointsRule.normal + ' 积分）') : ('完成打卡（+' + pointsRule.normal + ' 积分）')) }}
         </button>
       </div>
       </div><!-- /每日打卡 -->
@@ -413,6 +413,6 @@
 </div>
 
 <!-- 替换弹窗依赖全局样式 .modal/.modal-card，定义在 student.css -->
-<script src="./app.js?v=20260731"></script>
+<script src="./app.js?v=20260808"></script>
 </body>
 </html>

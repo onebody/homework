@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>打卡系统 · 后台管理</title>
-  <link rel="stylesheet" href="./admin.css?v=20260807" />
+  <link rel="stylesheet" href="./admin.css?v=20260808" />
   <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.4.27/vue.global.prod.js"></script>
   <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -33,10 +33,10 @@
       <div class="brand">📚 打卡管理后台</div>
       <div class="menu">
         <div :class="{on:view==='dashboard'}" @click="view='dashboard'; refreshDashboard()">📈 数据概览</div>
-        <div :class="{on:view==='prizes'}" @click="view='prizes'">🎁 奖品管理</div>
-        <div :class="{on:view==='users'}" @click="view='users'">👥 用户管理</div>
+        <div :class="{on:view==='prizes'}" @click="view='prizes'; loadPrizes()">🎁 奖品管理</div>
+        <div :class="{on:view==='users'}" @click="view='users'; loadUsers()">👥 用户管理</div>
         <div class="tab-redeems" :class="{on:view==='redeems'}" @click="loadRedeems">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
-        <div :class="{on:view==='checkins'}" @click="view='checkins'">📸 打卡记录</div>
+        <div :class="{on:view==='checkins'}" @click="view='checkins'; loadCheckins()">📸 打卡记录</div>
         <div :class="{on:view==='challenges'}" @click="view='challenges'; loadChallengeTasks()">🏆 闯关任务 <span class="nav-badge" v-if="challengePendingCount>0">{{ challengePendingCount }}</span></div>
         <div :class="{on:view==='push'}" @click="openPush">🔔 推送配置</div>
         <div :class="{on:view==='site'}" @click="openSite">⚙️ 系统设置</div>
@@ -530,6 +530,17 @@
               <input v-model="siteConfig.student_slogan" maxlength="128" placeholder="未配置时显示默认标语：每天进步一点点，打卡赢好礼！" />
             </label>
           </div>
+          <div class="push-row">
+            <label class="push-url">正常打卡积分
+              <input v-model.number="siteConfig.checkin_points" type="number" min="0" max="1000" placeholder="置空使用默认：10" />
+            </label>
+          </div>
+          <div class="push-row">
+            <label class="push-url">补卡积分
+              <input v-model.number="siteConfig.makeup_points" type="number" min="0" max="1000" placeholder="置空使用默认：5" />
+            </label>
+          </div>
+          <p class="muted">积分置空即恢复系统默认（正常 10 / 补卡 5），保存后审核发分与学生端文案立即生效，无需重启。</p>
           <p class="muted">置空保存即恢复默认值；保存后学生端刷新页面即生效。</p>
 
           <div class="push-actions">
@@ -911,6 +922,6 @@
   </div>
 </div>
 
-<script src="./app.js?v=20260807"></script>
+<script src="./app.js?v=20260808"></script>
 </body>
 </html>

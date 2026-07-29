@@ -347,9 +347,15 @@ def save_site_config(req: SiteConfigIn, _: User = Depends(require_role("admin"))
     slogan = (req.student_slogan or "").strip()
     if len(slogan) > 128:
         raise HTTPException(status_code=400, detail="欢迎标语最长 128 个字符")
+    # 打卡积分：None 表示恢复默认；有值则校验为 0–1000 的非负整数
+    for field, label in ((req.checkin_points, "正常打卡积分"), (req.makeup_points, "补卡积分")):
+        if field is not None and (field < 0 or field > 1000):
+            raise HTTPException(status_code=400, detail=f"{label}需在 0–1000 之间（置空恢复默认）")
     cfg = get_or_create_site_config(db)
     cfg.student_title = title or None
     cfg.student_slogan = slogan or None
+    cfg.checkin_points = req.checkin_points
+    cfg.makeup_points = req.makeup_points
     cfg.updated_at = now_local()
     db.commit()
     db.refresh(cfg)

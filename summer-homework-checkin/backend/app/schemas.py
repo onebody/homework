@@ -330,6 +330,8 @@ class SiteConfigIn(BaseModel):
     """站点配置保存请求。"""
     student_title: str | None = None
     student_slogan: str | None = None
+    checkin_points: int | None = None   # 正常打卡积分（None/空=用系统默认）
+    makeup_points: int | None = None    # 补卡积分（None/空=用系统默认）
 
 
 class SiteConfigOut(SiteConfigIn):

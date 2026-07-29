@@ -221,6 +221,8 @@ class SiteConfig(Base):
     id = Column(Integer, primary_key=True)
     student_title = Column(String(64), nullable=True)       # 学生端页面标题（空=默认标题）
     student_slogan = Column(String(128), nullable=True)      # 学生端登录页欢迎标语（空=默认标语）
+    checkin_points = Column(Integer, nullable=True)          # 正常打卡积分（空=用 config.CHECKIN_POINTS 默认值）
+    makeup_points = Column(Integer, nullable=True)           # 补卡积分（空=用 config.MAKEUP_POINTS 默认值）
     updated_at = Column(DateTime, default=now_local)
 
 

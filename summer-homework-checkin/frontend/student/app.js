@@ -14,6 +14,7 @@ createApp({
       view: "login",
       siteTitle: "暑假作业打卡平台",   // 页面标题（后台可配置，未配置时用默认值）
       siteSlogan: "每天进步一点点，打卡赢好礼！",   // 登录页欢迎标语（同上）
+      pointsRule: { normal: 10, makeup: 5 },   // 打卡分值（后台可配置，未配置时用默认值）
       authMode: "login",
       regRole: "student",
       form: { username: "", nickname: "", password: "" },
@@ -111,6 +112,8 @@ createApp({
           document.title = d.student_title;
         }
         if (d && d.student_slogan) this.siteSlogan = d.student_slogan;
+        if (d && typeof d.checkin_points === "number") this.pointsRule.normal = d.checkin_points;
+        if (d && typeof d.makeup_points === "number") this.pointsRule.makeup = d.makeup_points;
       } catch (e) { /* 取不到时保持默认标题 */ }
     },
     fixUrl(url) {
@@ -124,7 +127,8 @@ createApp({
     async api(path, opts = {}) {
       const headers = { ...(opts.headers || {}) };
       if (this.token) headers["Authorization"] = "Bearer " + this.token;
-      const res = await fetch(BASE_PATH + path, { ...opts, headers });
+      // no-store：切换界面时强制走网络，避免微信/iOS Safari 命中 GET 缓存显示旧数据
+      const res = await fetch(BASE_PATH + path, { cache: "no-store", ...opts, headers });
       if (res.status === 401) { this.logout(); throw new Error("登录失效"); }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "请求失败");

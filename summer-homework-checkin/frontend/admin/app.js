@@ -109,7 +109,8 @@ createApp({
     async api(path, opts = {}) {
       const headers = { ...(opts.headers || {}) };
       if (this.token) headers["Authorization"] = "Bearer " + this.token;
-      const res = await fetch(BASE_PATH + path, { ...opts, headers });
+      // no-store：切换界面时强制走网络，避免命中浏览器 GET 缓存显示旧数据
+      const res = await fetch(BASE_PATH + path, { cache: "no-store", ...opts, headers });
       if (res.status === 401) { this.logout(); throw new Error("登录失效"); }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "请求失败");
@@ -167,6 +168,8 @@ createApp({
           body: JSON.stringify({
             student_title: this.siteConfig.student_title,
             student_slogan: this.siteConfig.student_slogan,
+            checkin_points: this.siteConfig.checkin_points || null,
+            makeup_points: this.siteConfig.makeup_points || null,
           }),
         });
         this.showToast("系统设置已保存，学生端刷新即生效");
@@ -373,6 +376,15 @@ createApp({
       a.download = `打卡统计_${new Date().toISOString().slice(0,10)}.txt`;
       a.click();
       this.showToast('已导出统计报表');
+    },
+    // 菜单切换时按需重拉，保证概览外的模块也显示最新数据
+    async loadPrizes() {
+      try { this.prizes = await this.api("/api/admin/prizes"); }
+      catch (e) { this.showToast(e.message); }
+    },
+    async loadUsers() {
+      try { this.users = await this.api("/api/admin/users"); }
+      catch (e) { this.showToast(e.message); }
     },
     async loadPendingCount() {
       try {

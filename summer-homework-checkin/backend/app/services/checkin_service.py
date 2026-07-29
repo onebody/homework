@@ -172,7 +172,10 @@ def approve_checkin(db, ci, note=None):
     """管理员审核通过一条打卡记录：标记有效，发放积分，重算连续天数。"""
     if ci.review_status == "approved":
         raise HTTPException(status_code=400, detail="该记录已审核通过")
-    gained = CHECKIN_POINTS if ci.check_type == "normal" else MAKEUP_POINTS
+    # 从后台配置解析生效分值（未配置则回退 config 默认），改配置无需重启
+    from ..routers.site import resolve_points
+    normal_pts, makeup_pts = resolve_points(db)
+    gained = normal_pts if ci.check_type == "normal" else makeup_pts
     ci.review_status = "approved"
     ci.review_note = note
     ci.is_effective = True
