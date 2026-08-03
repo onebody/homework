@@ -25,10 +25,18 @@ _hits: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list)
 
 
 def _get_client_ip(request: Request) -> str:
-    """提取客户端 IP（兼容反向代理）。"""
+    """提取客户端 IP（兼容反向代理）。
+
+    安全：取 X-Forwarded-For 链的**最后一跳**。本系统 nginx 以
+    `$proxy_add_x_forwarded_for` 将真实下游 IP 追加到链尾，因此最后一段
+    是可信的；而客户端自带的伪造值只会排在前面，不会被采信（防止
+    通过伪造 XFF 绕过限流）。
+    """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
     return request.client.host if request.client else "unknown"
 
 
@@ -55,3 +63,44 @@ def check_rate_limit(request: Request):
                     detail=f"请求过于频繁，请在 {window} 秒后重试",
                 )
             timestamps.append(now)
+
+
+# ── 登录失败锁定（按用户名维度，弥补 IP 限流可被伪造 XFF 绕过的缺陷）────
+# 阈值：连续失败达 _LOGIN_MAX_FAILS 次则锁定 _LOGIN_LOCK_WINDOW 秒
+LOGIN_MAX_FAILS = int(os.environ.get("LOGIN_MAX_FAILS", "5"))
+LOGIN_LOCK_WINDOW = int(os.environ.get("LOGIN_LOCK_WINDOW", "900"))
+# {username_lower: [failure_timestamps]}
+_login_fails: dict[str, list[float]] = defaultdict(list)
+
+
+def check_login_locked(username: str):
+    """登录前调用：若该用户名因多次失败处于锁定期则抛 429。"""
+    if not _RATE_LIMIT_ENABLED:
+        return
+    key = (username or "").strip().lower()
+    now = time.time()
+    with _lock:
+        cutoff = now - LOGIN_LOCK_WINDOW
+        recent = [t for t in _login_fails[key] if t > cutoff]
+        _login_fails[key] = recent
+        if len(recent) >= LOGIN_MAX_FAILS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"登录失败次数过多，请在 {LOGIN_LOCK_WINDOW // 60} 分钟后重试",
+            )
+
+
+def record_login_failure(username: str):
+    """登录密码错误时调用，记录一次失败。"""
+    if not _RATE_LIMIT_ENABLED:
+        return
+    key = (username or "").strip().lower()
+    with _lock:
+        _login_fails[key].append(time.time())
+
+
+def reset_login_failures(username: str):
+    """登录成功时调用，清零该用户名的失败计数。"""
+    key = (username or "").strip().lower()
+    with _lock:
+        _login_fails.pop(key, None)

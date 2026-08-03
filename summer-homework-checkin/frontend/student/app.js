@@ -8,7 +8,92 @@ const BASE_PATH = (() => {
   return match ? match[1] : '';
 })();
 
-createApp({
+// ---------- 认证图片渲染 ----------
+// 上传目录已改为需 Bearer token 的 /api/uploads，而 <img src> 无法携带请求头，
+// 因此统一改用 fetch 取 blob 再通过 objectURL 渲染。
+function _revokeAuthSrc(el) {
+  if (el._authObjectUrl) {
+    URL.revokeObjectURL(el._authObjectUrl);
+    el._authObjectUrl = null;
+  }
+}
+
+async function _applyAuthSrc(el, raw) {
+  _revokeAuthSrc(el);
+  el._authSrcValue = raw;
+  if (!raw) { el.removeAttribute("src"); return; }
+  // 本地预览（data:/blob:）与普通静态资源无需鉴权，直接赋值
+  if (raw.indexOf("/api/uploads/") === -1) { el.src = raw; return; }
+  const target = /^https?:/.test(raw) ? raw : BASE_PATH + raw;
+  const token = localStorage.getItem("token") || "";
+  try {
+    const res = await fetch(target, {
+      headers: token ? { Authorization: "Bearer " + token } : {},
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const blob = await res.blob();
+    if (el._authSrcValue !== raw) return;   // 期间绑定值已变化，丢弃本次结果
+    el._authObjectUrl = URL.createObjectURL(blob);
+    el.src = el._authObjectUrl;
+  } catch (e) {
+    // 加载失败时不抛出，避免打断渲染；手动派发 error 以触发可能的 @error 收尾
+    el.removeAttribute("src");
+    el.alt = "图片加载失败";
+    el.dispatchEvent(new Event("error"));
+  }
+}
+
+const authSrcDirective = {
+  mounted(el, binding) { _applyAuthSrc(el, binding.value || ""); },
+  updated(el, binding) {
+    if (binding.value === binding.oldValue) return;
+    _applyAuthSrc(el, binding.value || "");
+  },
+  unmounted(el) { _revokeAuthSrc(el); },
+};
+
+// ---------- 分页 ----------
+const PAGE_SIZE = 5;   // 学生/家长端记录列表每页条数
+
+// 分页控件：上一页/下一页 + 折叠页码 + “第 X/Y 页 · 共 N 条”，桌面与移动端共用
+const Pager = {
+  props: {
+    page: { type: Number, default: 1 },
+    pages: { type: Number, default: 1 },
+    total: { type: Number, default: 0 },
+  },
+  emits: ["go"],
+  computed: {
+    // 页码窗口：总页数少时全部列出；多时保留首末页并在当前页附近展开，其余折叠为 …
+    numbers() {
+      const p = this.page, n = this.pages, out = [];
+      const push = v => { if (out[out.length - 1] !== v) out.push(v); };
+      if (n <= 5) { for (let i = 1; i <= n; i++) out.push(i); return out; }
+      push(1);
+      if (p > 3) push("…");
+      for (let i = Math.max(2, p - 1); i <= Math.min(n - 1, p + 1); i++) push(i);
+      if (p < n - 2) push("…");
+      push(n);
+      return out;
+    },
+  },
+  methods: {
+    go(p) {
+      if (p === "…" || p < 1 || p > this.pages || p === this.page) return;
+      this.$emit("go", p);
+    },
+  },
+  template: `
+    <div class="pager" v-if="total > 0">
+      <button class="pg-btn" :disabled="page<=1" @click="go(page-1)">上一页</button>
+      <button v-for="(n,i) in numbers" :key="i" class="pg-num"
+              :class="{on: n===page, gap: n==='…'}" :disabled="n==='…'" @click="go(n)">{{ n }}</button>
+      <button class="pg-btn" :disabled="page>=pages" @click="go(page+1)">下一页</button>
+      <span class="pg-info">第 {{ page }}/{{ pages }} 页 · 共 {{ total }} 条</span>
+    </div>`,
+};
+
+const app = createApp({
   data() {
     return {
       view: "login",
@@ -46,6 +131,12 @@ createApp({
       mall: { points: 0, lottery_tickets: 0, prizes: [], redemptions: [], lottery_records: [] },
       redeemBusy: false, replaceTarget: null,   // replaceTarget: 正在为其选择替换奖品的兑换记录
       history: [],
+      // 各记录列表的分页状态（每页 PAGE_SIZE 条，由后端返回 page/pages/total 回填）
+      pg: {
+        history: { page: 1, pages: 1, total: 0 },
+        redemptions: { page: 1, pages: 1, total: 0 },
+        lotteryRecords: { page: 1, pages: 1, total: 0 },
+      },
       summerStart: "2026-07-01", summerEnd: "2026-08-31",
       toast: "", toastTimer: null,
       // 闯关任务
@@ -119,7 +210,7 @@ createApp({
     fixUrl(url) {
       if (!url) return "";
       if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
-      if (url.startsWith("/uploads/") || url.startsWith("/static/")) {
+      if (url.startsWith("/api/uploads/") || url.startsWith("/uploads/") || url.startsWith("/static/")) {
         return window.location.origin + BASE_PATH + url;
       }
       return window.location.origin + BASE_PATH + "/" + url.replace(/^\.\//, "");
@@ -237,6 +328,7 @@ createApp({
         this.streak = { current_streak: 0, longest_streak: 0, effective_checkins: 0, lottery_tickets: 0, today_checked: false, can_makeup_this_month: 3, points: 0 };
         this.today = { today_checked: false, today_pending: false, pending_count: 0, can_makeup_this_month: 3 };
         this.mall = { points: 0, lottery_tickets: 0, prizes: [], redemptions: [], lottery_records: [] };
+        this.resetPg();
         return;
       }
       this.actingChildId = this.children[0].student_id;
@@ -244,6 +336,7 @@ createApp({
     },
     async selectChild(id) {
       this.actingChildId = id;
+      this.resetPg();   // 切孩子后记录列表回到第 1 页
       await this.loadChildHome();
       if (this.view === "mall") await this.loadMall();
       if (this.view === "me") await this.loadHistory();
@@ -380,6 +473,22 @@ createApp({
       finally { this.submitting = false; }
     },
 
+    /* ==================== 分页辅助 ==================== */
+    // 目标页码：显式传入优先（非法值如事件对象会被忽略），否则沿用当前页
+    pageOf(key, page) {
+      const p = Number(page);
+      return Number.isInteger(p) && p >= 1 ? p : this.pg[key].page;
+    },
+    pgq(key, page) { return `page=${this.pageOf(key, page)}&size=${PAGE_SIZE}`; },
+    applyPg(key, d) {
+      this.pg[key] = { page: d.page || 1, pages: d.pages || 1, total: d.total || 0 };
+    },
+    resetPg() {
+      this.pg.history = { page: 1, pages: 1, total: 0 };
+      this.pg.redemptions = { page: 1, pages: 1, total: 0 };
+      this.pg.lotteryRecords = { page: 1, pages: 1, total: 0 };
+    },
+
     /* ============ 积分商城 ============ */
     async loadMall() {
       try {
@@ -390,11 +499,36 @@ createApp({
         this.mall.points = d.points;
         this.mall.lottery_tickets = d.lottery_tickets;
         this.mall.prizes = d.prizes || [];
-        this.mall.redemptions = d.redemptions || [];
-        this.mall.lottery_records = d.lottery_records || [];
         this.streak.lottery_tickets = d.lottery_tickets;
         this.streak.points = d.points;
       } catch (e) { this.showToast(e.message); }
+      // 两个记录列表各自分页拉取（沿用当前页码）
+      await this.loadRedemptions();
+      await this.loadLotteryRecords();
+    },
+    // 兑换记录（分页）
+    async loadRedemptions(page) {
+      if (this.isParent && !this.actingChildId) { this.mall.redemptions = []; return; }
+      try {
+        const url = this.isParent
+          ? `/api/parent/redemptions/${this.actingChildId}?`
+          : "/api/redemptions?";
+        const d = await this.api(url + this.pgq("redemptions", page));
+        this.mall.redemptions = d.items || [];
+        this.applyPg("redemptions", d);
+      } catch (e) { this.mall.redemptions = []; }
+    },
+    // 抽奖记录（分页）
+    async loadLotteryRecords(page) {
+      if (this.isParent && !this.actingChildId) { this.mall.lottery_records = []; return; }
+      try {
+        const url = this.isParent
+          ? `/api/parent/lottery/${this.actingChildId}/records?`
+          : "/api/lottery/records?";
+        const d = await this.api(url + this.pgq("lotteryRecords", page));
+        this.mall.lottery_records = d.items || [];
+        this.applyPg("lotteryRecords", d);
+      } catch (e) { this.mall.lottery_records = []; }
     },
     canRedeem(p) {
       if (p.is_lottery_ticket) return this.points >= p.cost_points;
@@ -417,6 +551,7 @@ createApp({
           this.showToast("兑换成功！🎁");
         }
         await this.loadMall();
+        await this.loadRedemptions(1);   // 新兑换记录在第 1 页
       } catch (e) { this.showToast(e.message); }
       finally { this.redeemBusy = false; }
     },
@@ -438,6 +573,7 @@ createApp({
         this.showToast("已替换为「" + newPrize.name + "」");
         this.replaceTarget = null;
         await this.loadMall();
+        await this.loadRedemptions(1);
       } catch (e) { this.showToast(e.message); }
     },
 
@@ -469,24 +605,42 @@ createApp({
         this.drawResult = d;
         this.streak.lottery_tickets = d.tickets_left;
         await this.loadMall();
+        await this.loadLotteryRecords(1);   // 新抽奖记录在第 1 页
         if (d.is_win) this.showToast("🎉 恭喜抽中 " + d.prize_name);
         else this.showToast("本次未中奖，再接再厉");
       } catch (e) { this.showToast(e.message); }
       finally { this.wheelSpinning = false; this.drawing = false; }
     },
 
-    async loadHistory() {
+    async loadHistory(page) {
       if (this.isParent) {
         this.history = [];
+        this.pg.history = { page: 1, pages: 1, total: 0 };
       } else {
-        this.history = await this.api("/api/checkin/history");
+        const d = await this.api("/api/checkin/history?" + this.pgq("history", page));
+        this.history = d.items || [];
+        this.applyPg("history", d);
       }
     },
-    openReport() {
-      if (this.isParent) {
-        window.open("/api/parent/child-report/" + this.actingChildId + "/html", "_blank");
-      } else {
-        window.open("/api/report/me/html", "_blank");
+    async openReport() {
+      const path = this.isParent
+        ? "/api/parent/child-report/" + this.actingChildId + "/html"
+        : "/api/report/me/html";
+      // 报告 HTML 接口需 Bearer 认证，window.open 无法携带请求头，
+      // 故先同步打开空窗口（规避弹窗拦截），再用带 token 的请求拉取后填充。
+      const win = window.open("", "_blank");
+      try {
+        const res = await fetch(BASE_PATH + path, {
+          cache: "no-store",
+          headers: this.token ? { Authorization: "Bearer " + this.token } : {},
+        });
+        if (res.status === 401) { if (win) win.close(); this.logout(); return; }
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const html = await res.text();
+        if (win) { win.document.open(); win.document.write(html); win.document.close(); }
+      } catch (e) {
+        if (win) win.close();
+        this.showToast("报告加载失败");
       }
     },
     catName(c) { return { stationery: "文具", outdoor: "户外", interest: "兴趣" }[c] || c; },
@@ -558,4 +712,8 @@ createApp({
       }
     },
   },
-}).mount("#app");
+});
+
+app.directive("auth-src", authSrcDirective);
+app.component("pager", Pager);
+app.mount("#app");

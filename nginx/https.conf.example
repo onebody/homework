@@ -1,0 +1,93 @@
+# ============================================================================
+# HTTPS（TLS）配置模板 —— 修复 V-01「全站明文 HTTP 传输」
+#
+# 本文件是【示例模板，当前未启用】：
+#   - 后缀 .example，不会被任何 nginx 配置加载，对现有环境零影响
+#   - 它包含完整的 server 块，启用时必须挂载到 /etc/nginx/conf.d/（与 default.conf 同级），
+#     不能放进 nginx/sites/ —— 那里的文件被 include 进 default.conf 的 server 块内部，
+#     嵌套 server 块会导致 nginx 启动失败
+#   - 启用步骤见 nginx/README-HTTPS.md
+#
+# 前提：Let's Encrypt 不为裸 IP 签发证书，必须先有可解析到本机的域名。
+#       若暂无域名，可先用自签证书验证配置链路（浏览器会告警）。
+#
+# 启用后本文件将取代 default.conf 成为唯一 server 定义，因此把 default.conf
+# 中的通用设置（resolver / 上传限制 / 代理头 / sites 片段 include）一并带上了。
+# ============================================================================
+
+# 静态资源缓存策略（与 default.conf 一致；两者不可同时加载，否则 map 重复定义）
+map $uri $static_cache_control {
+    ~*\.(js|css)$                          "public, max-age=3600";
+    ~*\.(png|jpe?g|gif|webp|svg|ico)$      "public, max-age=86400";
+    default                                "";
+}
+
+# ---- HTTP：仅保留 ACME 校验路径，其余全部 301 跳转到 HTTPS ----
+server {
+    listen 80 default_server;
+    server_name example.com;
+
+    # certbot webroot 模式的校验路径，必须允许明文访问
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---- HTTPS 主服务 ----
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+    # 仅启用 TLS 1.2/1.3，禁用已被攻破的 SSLv3 / TLS 1.0 / 1.1
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;   # TLS1.3 下交由客户端选择更优
+
+    # 会话复用，降低握手开销
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # OCSP Stapling（需完整证书链；自签证书请注释掉这三行）
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_trusted_certificate /etc/letsencrypt/live/example.com/chain.pem;
+
+    # HSTS：强制浏览器后续只用 HTTPS 访问本站
+    # 注意：一旦下发，有效期内无法回退到 HTTP，请确认证书续期链路稳定后再启用
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Docker 内置 DNS：配合 sites 片段中“变量 + proxy_pass”写法实现运行时解析，
+    # 后端容器不在线时 nginx 仍能正常启动
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
+
+    # 文件上传大小上限（与应用侧 10MB 级限制匹配并留余量）
+    client_max_body_size 12m;
+
+    # 通用代理请求头（$scheme 会正确传出 https，应用侧生成的链接才不会退回 http）
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # 静态资源缓存头（空值时不输出）
+    add_header Cache-Control $static_cache_control;
+
+    # 根路径导航页
+    location = / {
+        default_type text/html;
+        return 200 '<html><body><h3>测试环境</h3><ul><li><a href="/homework/">暑假作业学生端</a></li><li><a href="/homework/admin/">暑假作业管理端</a></li><li><a href="/points/">积分系统</a></li></ul></body></html>';
+    }
+
+    # 复用与 HTTP 完全相同的各项目路由片段
+    include /etc/nginx/sites/*.conf;
+}

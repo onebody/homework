@@ -149,9 +149,9 @@ def _rate_limited(db, cfg) -> bool:
 
 def _daily_vars(cfg, ci) -> dict:
     """日常打卡可用占位符。"""
+    # 上传目录已改为认证访问（/api/uploads 需 Bearer token），群成员无 token，
+    # 推送链接必然 401，因此不再输出照片链接（空行会被模板渲染自动清理）。
     photo = ""
-    if cfg.public_base_url and ci.photo_path:
-        photo = f"{cfg.public_base_url.rstrip('/')}{ci.photo_url}"
     return {
         "nickname": ci.user.nickname if ci.user else f"用户{ci.user_id}",
         "type": _TYPE_LABELS.get(ci.check_type, ci.check_type),
@@ -202,8 +202,9 @@ _SAMPLE_VARS = {
     "daily": {
         "nickname": "小航", "type": "正常打卡", "status": "待审核",
         "time": "2026-08-01 09:30",
-        "photo": "https://example.com/uploads/2/c_demo.jpg",
-        "photo_line": "照片：https://example.com/uploads/2/c_demo.jpg",
+        # 与实际推送保持一致：上传目录认证化后不再输出照片链接
+        "photo": "",
+        "photo_line": "",
         "geo_warn": "⚠️ 位置异常：距常用位置较远，请关注",
     },
     "challenge": {

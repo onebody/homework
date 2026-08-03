@@ -3,11 +3,12 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from ..models import User, Prize, LotteryRecord
+from ..models import User, Prize, LotteryRecord, Redemption
 from ..database import get_db
 from ..schemas import RedeemRequest, RedeemReplaceRequest, RedemptionOut, MallOut, LotteryRecordOut
 from ..deps import get_current_user
 from ..services import redeem_service
+from ..utils.pagination import CLIENT_PAGE_SIZE, Page, paginate
 
 router = APIRouter(prefix="/api", tags=["redeem"])
 
@@ -43,6 +44,22 @@ def mall(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
         redemptions=[RedemptionOut.model_validate(r) for r in redemptions],
         lottery_records=[LotteryRecordOut.model_validate(r) for r in lottery_records],
     )
+
+
+@router.get("/redemptions", response_model=Page[RedemptionOut])
+def my_redemptions(
+    page: int = 1,
+    size: int = CLIENT_PAGE_SIZE,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """我的兑换记录（分页）。/api/mall 仍返回全量聚合数据，此接口供记录列表翻页使用。"""
+    query = (
+        db.query(Redemption).filter(Redemption.user_id == user.id)
+        .order_by(Redemption.redeemed_at.desc())
+    )
+    items, meta = paginate(query, page, size, default_size=CLIENT_PAGE_SIZE)
+    return Page[RedemptionOut](items=[RedemptionOut.model_validate(r) for r in items], **meta)
 
 
 @router.post("/redeem", response_model=RedeemResult)

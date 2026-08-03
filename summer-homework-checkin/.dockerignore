@@ -10,7 +10,9 @@ uploads/
 venv/
 .venv/
 .env
-.secret_key
+# 必须带 **/：docker 忽略模式不含斜杠时仅匹配构建上下文根目录，
+# 单写 .secret_key 会漏掉 backend/.secret_key，导致签名密钥被烘进镜像层
+**/.secret_key
 backups/
 README.md
 CHALLENGE_TASK_SUMMARY.md

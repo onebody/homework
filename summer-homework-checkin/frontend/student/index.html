@@ -224,6 +224,7 @@
             <span class="replaced-tag" v-else>已替换</span>
           </span>
         </div>
+        <pager :page="pg.redemptions.page" :pages="pg.redemptions.pages" :total="pg.redemptions.total" @go="loadRedemptions"></pager>
       </div>
     </section>
 
@@ -233,7 +234,7 @@
         <h3>😊 人脸打卡验证</h3>
         <p class="muted" v-if="!faceEnrolled">尚未采集人脸底图。采集后，每次打卡将自动比对是否为本人，有效防止别人代打卡。</p>
         <p v-else>✅ 已采集人脸底图，打卡时将自动比对是否为本人。</p>
-        <img v-if="faceIdUrl" :src="faceIdUrl" class="face-id" alt="人脸底图" />
+        <img v-if="faceIdUrl" v-auth-src="faceIdUrl" class="face-id" alt="人脸底图" />
         <label class="uploader small" :class="{filled:faceData}" v-if="!faceEnrolled">
           <input type="file" accept="image/*" capture="user" @change="onFaceFile" />
           <img v-if="faceData" :src="faceData" class="preview sm" />
@@ -293,6 +294,7 @@
           <small>{{ fmt(c.check_time) }}</small>
         </div>
         <p class="muted" v-if="!history.length">还没有打卡记录</p>
+        <pager :page="pg.history.page" :pages="pg.history.pages" :total="pg.history.total" @go="loadHistory"></pager>
       </div>
       <button class="ghost" @click="logout">退出登录</button>
     </section>
@@ -335,6 +337,7 @@
           <span>{{ r.is_win ? '🎁 '+r.prize_name : '未中奖' }}</span>
           <small>{{ fmt(r.drawn_at) }}</small>
         </div>
+        <pager :page="pg.lotteryRecords.page" :pages="pg.lotteryRecords.pages" :total="pg.lotteryRecords.total" @go="loadLotteryRecords"></pager>
       </div>
     </section>
 

@@ -1,18 +1,29 @@
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 
 from .config import (
-    UPLOAD_DIR, STUDENT_DIR, ADMIN_DIR,
+    STUDENT_DIR, ADMIN_DIR,
     ALLOWED_ORIGINS, ALLOWED_METHODS, ALLOWED_HEADERS
 )
 from .database import engine
 from . import models  # noqa: F401 确保模型被加载
-from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge, dingtalk_bot, site
+from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge, dingtalk_bot, wecom_bot, site, uploads
 from .utils.rate_limit import check_rate_limit
 
-app = FastAPI(title="暑假作业打卡系统", version="1.2.0")
+# 生产环境（PRODUCTION 非空）关闭交互式 API 文档，避免暴露接口清单与数据结构
+_PRODUCTION = bool(os.environ.get("PRODUCTION"))
+
+app = FastAPI(
+    title="暑假作业打卡系统",
+    version="1.2.0",
+    docs_url=None if _PRODUCTION else "/docs",
+    redoc_url=None if _PRODUCTION else "/redoc",
+    openapi_url=None if _PRODUCTION else "/openapi.json",
+)
 
 # CORS 中间件（安全加固：收窄方法和头部）
 app.add_middleware(
@@ -34,7 +45,9 @@ app.include_router(face.router)
 app.include_router(redeem.router)
 app.include_router(challenge.router)
 app.include_router(dingtalk_bot.router)
+app.include_router(wecom_bot.router)
 app.include_router(site.router)
+app.include_router(uploads.router)
 
 
 @app.middleware("http")
@@ -89,8 +102,7 @@ def on_startup():
     Base.metadata.create_all(bind=engine)
 
 
-# 静态资源：上传照片
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# 上传照片不再公开挂载，改由 routers/uploads.py 的 /api/uploads 认证下载（防人脸照片遍历）
 # 独立后台管理页
 app.mount("/admin", StaticFiles(directory=ADMIN_DIR, html=True), name="admin")
 # H5 学生端（默认根路径）

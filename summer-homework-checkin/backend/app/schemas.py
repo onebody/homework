@@ -353,6 +353,8 @@ class PushConfigIn(BaseModel):
     public_base_url: str | None = None
     outgoing_token: str | None = None
     allow_bot_review: bool = False
+    wecom_bot_token: str | None = None
+    wecom_bot_aes_key: str | None = None
     tpl_daily_title: str | None = None
     tpl_daily_body: str | None = None
     tpl_challenge_title: str | None = None

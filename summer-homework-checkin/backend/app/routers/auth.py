@@ -7,6 +7,7 @@ from ..schemas import UserRegister, UserLogin, UserOut, TokenOut, PasswordChange
 from ..security import hash_password, verify_password, create_token
 from ..deps import get_current_user
 from ..config import MIN_PASSWORD_LENGTH
+from ..utils.rate_limit import check_login_locked, record_login_failure, reset_login_failures
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -54,9 +55,13 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenOut)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
+    # 按用户名维度的失败锁定（弥补 IP 限流可被伪造 XFF 绕过，防暴力破解）
+    check_login_locked(payload.username)
     user = db.query(User).filter_by(username=payload.username).first()
     if not user or not verify_password(payload.password, user.password_hash, user.password_salt or ""):
+        record_login_failure(payload.username)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    reset_login_failures(payload.username)
     token = create_token(user.id, user.role)
     return {"access_token": token, "user": UserOut.model_validate(user)}
 

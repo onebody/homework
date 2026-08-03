@@ -22,7 +22,8 @@ services:
       dockerfile: Dockerfile
     container_name: summer-homework
     ports:
-      - "8000:8000"
+      # 仅绑定本机：容器间通信走 hanghang-net 内部网络，无需向局域网暴露端口
+      - "127.0.0.1:8000:8000"
     environment:
       # 数据库与上传目录重定向到持久化卷
       DB_PATH: /data/app.db
@@ -30,6 +31,8 @@ services:
       # 安全配置（生产环境必须通过 .env 文件或环境变量注入强随机密钥）
       SUMMER_SECRET: ${SUMMER_SECRET:?请在 .env 或环境变量中设置 SUMMER_SECRET}
       ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000,http://localhost,http://127.0.0.1
+      # 生产环境关闭 /docs、/redoc、/openapi.json（避免公开接口清单与数据结构）
+      PRODUCTION: ${PRODUCTION:-1}
       # 初始管理员密码（仅本地测试；未设置则 seed 自动生成随机密码）
       ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
       # 速率限制（默认开启，测试可设为 0）
@@ -39,6 +42,27 @@ services:
     networks:
       - hanghang-net
     restart: unless-stopped
+    # ---- 安全加固 ----
+    # 根文件系统只读：应用只写 /data 卷，PYTHONDONTWRITEBYTECODE=1 也不会生成 pyc
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # 入口脚本以 root 启动修复 /data 属主后用 setpriv 降权到 appuser，
+    # 因此必需保留这五项能力（全部丢弃会导致 setpriv: setresuid failed 崩溃循环）
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+    deploy:
+      resources:
+        limits: { cpus: '2.0', memory: 1G }
+        reservations: { cpus: '0.5', memory: 256M }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
@@ -53,14 +77,29 @@ services:
       dockerfile: Dockerfile
     container_name: points-system
     ports:
-      - "8001:8000"
+      # 同上：仅绑定本机
+      - "127.0.0.1:8001:8000"
     environment:
       DB_PATH: /data/app.db
+      # 生产环境关闭交互式 API 文档
+      PRODUCTION: ${PRODUCTION:-1}
     volumes:
       - points-data:/data
     networks:
       - hanghang-net
     restart: unless-stopped
+    # ---- 安全加固（同 summer-homework）----
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits: { cpus: '2.0', memory: 1G }
+        reservations: { cpus: '0.5', memory: 256M }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s

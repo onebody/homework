@@ -5,6 +5,17 @@
 
 ---
 
+## v1.4（2026-08）— 企微智能机器人双向消息
+
+### 新增
+- **企微双向机器人**（`GET/POST /api/wecom/callback`）：基于企微「智能机器人」回调协议，群内 @机器人支持与钉钉完全一致的「统计/待审核/查询 <昵称>/通过拒绝 <打卡ID>」指令（复用 `dingtalk_bot_service.handle_command`）；回调报文 AES-256-CBC 加解密 + SHA1 字典序验签（`utils/wecom_crypto`），被动回复采用 stream 类型一次性应答，msgid LRU 排重防网络重试重复执行审核。
+- 推送配置新增企微机器人 Token 与 EncodingAESKey 字段（迁移 009），后台「消息推送」页双向消息区块拆为钉钉/企微两子块，展示各自回调地址；EncodingAESKey 保存时校验 43 位长度；「允许群内审核」开关对两渠道共同生效。
+
+### 安全
+- 企微回调未配置 Token/密钥时直接 403；签名比对用 `hmac.compare_digest` 防时序侧信道；指令留痕（PushLog）不落 Token/密钥。
+
+---
+
 ## v1.3（2026-07）— 消息推送、时区治理与站点动态配置
 
 ### 新增

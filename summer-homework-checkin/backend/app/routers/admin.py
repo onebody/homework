@@ -11,6 +11,8 @@ from ..schemas import ReviewRequest, PushConfigIn, PushConfigOut, PushLogOut, Pu
 from ..config import SUMMER_START, SUMMER_END, CHECKIN_POINTS, MAKEUP_POINTS, DEFAULT_PUSH_TEMPLATES
 from ..deps import require_role
 from ..utils.timeutil import now_local
+from ..utils.storage import public_url
+from ..utils.pagination import ADMIN_PAGE_SIZE, Page, paginate
 from ..services import checkin_service
 from ..services import webhook_push_service
 
@@ -153,42 +155,75 @@ def dashboard(_: User = Depends(require_role("admin")), db: Session = Depends(ge
 
 
 @router.get("/users")
-def users(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    items = db.query(User).order_by(User.id).all()
-    return [
-        {
-            "id": u.id, "username": u.username, "role": u.role, "nickname": u.nickname,
-            "grade": u.grade, "phone": u.phone, "current_streak": u.current_streak,
-            "longest_streak": u.longest_streak,             "effective_checkins": u.effective_checkins,
-            "lottery_tickets": u.lottery_tickets, "points": u.points or 0,
-            "bind_code": u.bind_code,
-        }
-        for u in items
-    ]
+def users(
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
+    role: str | None = None,  # 可选筛选：student/parent/admin
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """用户列表（分页，可按角色筛选）。"""
+    query = db.query(User)
+    if role and role != "all":
+        query = query.filter(User.role == role)
+    items, meta = paginate(query.order_by(User.id), page, size)
+    return {
+        "items": [
+            {
+                "id": u.id, "username": u.username, "role": u.role, "nickname": u.nickname,
+                "grade": u.grade, "phone": u.phone, "current_streak": u.current_streak,
+                "longest_streak": u.longest_streak,             "effective_checkins": u.effective_checkins,
+                "lottery_tickets": u.lottery_tickets, "points": u.points or 0,
+                "bind_code": u.bind_code,
+            }
+            for u in items
+        ],
+        **meta,
+    }
 
 
 @router.get("/checkins")
-def checkins(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    """获取打卡记录列表（包含用户昵称、审核状态）"""
-    items = db.query(CheckIn).order_by(CheckIn.check_time.desc()).limit(500).all()
-    return [
-        {
-            "id": c.id, 
-            "user_id": c.user_id,
-            "nickname": db.query(User).filter(User.id == c.user_id).first().nickname if db.query(User).filter(User.id == c.user_id).first() else "-",
-            "check_date": str(c.check_date),
-            "check_time": c.check_time.strftime("%Y-%m-%d %H:%M"), 
-            "check_type": c.check_type,
-            "geo_distance": c.geo_distance, 
-            "geo_flag": c.geo_flag,
-            "scene_check": c.scene_check, 
-            "review_status": c.review_status,
-            "review_note": c.review_note,
-            "is_effective": c.is_effective,
-            "photo": f"/uploads/{c.photo_path}" if c.photo_path else "",
-        }
-        for c in items
-    ]
+def checkins(
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
+    status: str | None = None,  # 可选筛选：pending/approved/rejected
+    geo: bool = False,  # 仅看位置异常
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """打卡记录列表（分页，包含用户昵称、审核状态；可按审核状态或位置异常筛选）"""
+    query = db.query(CheckIn)
+    if status and status != "all":
+        query = query.filter(CheckIn.review_status == status)
+    if geo:
+        query = query.filter(CheckIn.geo_flag == True)
+    items, meta = paginate(query.order_by(CheckIn.check_time.desc()), page, size)
+    # 当页昵称一次性批量取，避免逐条查询
+    nick_map = {}
+    if items:
+        uids = {c.user_id for c in items}
+        nick_map = {u.id: u.nickname for u in db.query(User).filter(User.id.in_(uids)).all()}
+    return {
+        "items": [
+            {
+                "id": c.id,
+                "user_id": c.user_id,
+                "nickname": nick_map.get(c.user_id) or "-",
+                "check_date": str(c.check_date),
+                "check_time": c.check_time.strftime("%Y-%m-%d %H:%M"),
+                "check_type": c.check_type,
+                "geo_distance": c.geo_distance,
+                "geo_flag": c.geo_flag,
+                "scene_check": c.scene_check,
+                "review_status": c.review_status,
+                "review_note": c.review_note,
+                "is_effective": c.is_effective,
+                "photo": public_url(c.photo_path) if c.photo_path else "",
+            }
+            for c in items
+        ],
+        **meta,
+    }
 
 
 @router.get("/checkins/pending-count")
@@ -222,15 +257,17 @@ def review_checkin(
 
 @router.get("/redemptions")
 def redemptions(
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
     status: str | None = None,  # 可选筛选：pending/approved/rejected
     _: User = Depends(require_role("admin")),
     db: Session = Depends(get_db),
 ):
-    """兑换记录管理（含学生昵称，按时间倒序，支持按状态筛选）。"""
+    """兑换记录管理（分页，含学生昵称，按时间倒序，支持按状态筛选）。"""
     query = db.query(Redemption)
-    if status:
+    if status and status != "all":
         query = query.filter(Redemption.status == status)
-    items = query.order_by(Redemption.redeemed_at.desc()).limit(500).all()
+    items, meta = paginate(query.order_by(Redemption.redeemed_at.desc()), page, size)
     out = []
     for r in items:
         u = db.get(User, r.user_id)
@@ -245,7 +282,7 @@ def redemptions(
             "reviewed_by": r.reviewed_by,
             "reviewed_at": r.reviewed_at.strftime("%Y-%m-%d %H:%M") if r.reviewed_at else None,
         })
-    return out
+    return {"items": out, **meta}
 
 
 @router.get("/redemptions/{redemption_id}")
@@ -380,6 +417,9 @@ def save_push_config(req: PushConfigIn, _: User = Depends(require_role("admin"))
             err = webhook_push_service.validate_webhook_url(channel, url.strip())
             if err:
                 raise HTTPException(status_code=400, detail=err)
+    wecom_aes_key = (req.wecom_bot_aes_key or "").strip()
+    if wecom_aes_key and len(wecom_aes_key) != 43:
+        raise HTTPException(status_code=400, detail="企微 EncodingAESKey 长度必须为 43 个字符")
     warnings = []
     for label, tpl in (("日常打卡", req.tpl_daily_title), ("闯关打卡", req.tpl_challenge_title)):
         err = webhook_push_service.validate_template_title((tpl or "").strip())
@@ -397,6 +437,8 @@ def save_push_config(req: PushConfigIn, _: User = Depends(require_role("admin"))
     cfg.public_base_url = (req.public_base_url or "").strip() or None
     cfg.outgoing_token = (req.outgoing_token or "").strip() or None
     cfg.allow_bot_review = req.allow_bot_review
+    cfg.wecom_bot_token = (req.wecom_bot_token or "").strip() or None
+    cfg.wecom_bot_aes_key = wecom_aes_key or None
     # 标题/正文清空时回填内置默认模板（界面始终有可编辑的起点）；签名清空存空串表示不追加
     _tpl_defaults = DEFAULT_PUSH_TEMPLATES
     cfg.tpl_daily_title = (req.tpl_daily_title or "").strip() or _tpl_defaults["daily_title"]
@@ -432,8 +474,13 @@ def preview_push_template(req: PushTemplatePreviewIn, _: User = Depends(require_
     return {"text": text, "warning": err}
 
 
-@router.get("/push-logs", response_model=list[PushLogOut])
-def push_logs(limit: int = 50, _: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    """推送历史倒序列表。"""
-    limit = min(max(1, limit), 200)
-    return db.query(PushLog).order_by(PushLog.id.desc()).limit(limit).all()
+@router.get("/push-logs", response_model=Page[PushLogOut])
+def push_logs(
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """推送历史倒序列表（分页）。"""
+    items, meta = paginate(db.query(PushLog).order_by(PushLog.id.desc()), page, size)
+    return Page[PushLogOut](items=items, **meta)

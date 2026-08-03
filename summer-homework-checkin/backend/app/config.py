@@ -43,11 +43,18 @@ if os.environ.get("SUMMER_SECRET"):
 elif os.path.exists(_SECRET_FILE):
     with open(_SECRET_FILE, "r") as f:
         SECRET = f.read().strip()
+    # 修正历史遗留的宽松权限（早期版本以默认 644 创建）；只读文件系统下忽略失败
+    try:
+        os.chmod(_SECRET_FILE, 0o600)
+    except Exception:
+        pass
 else:
     import secrets
     SECRET = secrets.token_hex(32)
     try:
-        with open(_SECRET_FILE, "w") as f:
+        # 创建时即指定 0o600，避免“先 644 再 chmod”之间的竞态窗口
+        _fd = os.open(_SECRET_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(_fd, "w") as f:
             f.write(SECRET)
     except Exception:
         pass

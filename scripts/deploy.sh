@@ -5,17 +5,26 @@
 # ============================================================================
 # 用法：
 #   ./deploy.sh local      # 本地 Docker 增量更新
-#   DEPLOY_SSH_HOST=<服务器IP> DEPLOY_SSH_PASS=xxx ./deploy.sh prod       # 生产服务器增量更新
-#   DEPLOY_SSH_HOST=<服务器IP> DEPLOY_SSH_PASS=xxx ./deploy.sh prod --no-backup  # 跳过备份
+#   DEPLOY_SSH_HOST=<服务器IP> DEPLOY_SSH_KEY=~/.ssh/id_ed25519 ./deploy.sh prod   # 密钥认证（推荐）
+#   DEPLOY_SSH_HOST=<服务器IP> DEPLOY_SSH_PASS=xxx ./deploy.sh prod                # 密码认证（回退）
+#   ... ./deploy.sh prod --no-backup  # 跳过备份
 #
 # 环境变量（生产部署）：
 #   DEPLOY_SSH_HOST      必填，生产服务器地址
-#   DEPLOY_SSH_PASS      必填，SSH 密码（建议改用密钥登录后置空）
+#   DEPLOY_SSH_KEY       与 DEPLOY_SSH_PASS 二者必填其一。私钥路径，优先使用
+#   DEPLOY_SSH_PASS      与 DEPLOY_SSH_KEY 二者必填其一。SSH 密码，经 SSHPASS 环境变量
+#                        传递（sshpass -e），不会出现在进程命令行 /proc/<pid>/cmdline 中
+#   DEPLOY_SSH_STRICT    选填，StrictHostKeyChecking 取值，默认 accept-new
+#                        （首次连接自动记录指纹，指纹变更即拒绝，防中间人攻击）
 #   DEPLOY_SSH_USER      选填，默认 root
 #   DEPLOY_SSH_PORT      选填，默认 22
 #   DEPLOY_APP_PORT      选填，默认 9000
+#   DEPLOY_BIND_ADDR     选填，容器端口绑定地址，默认 127.0.0.1（仅本机可访问，由 Nginx 反代）
+#                        若生产 Nginx 不经 localhost 回连，需显式设为 0.0.0.0
+#   DEPLOY_READONLY_FS   选填，设为 1 时容器根文件系统只读（需先验证），默认关闭
 #   DEPLOY_ALLOWED_ORIGINS 选填，CORS 白名单（逗号分隔）；默认沿用服务器现有容器的配置，
-#                        避免把线上已存在的来源（如公网入口）覆盖掉
+#                        避免把线上已存在的来源（如公网入口）覆盖掉。沿用时会自动剔除
+#                        localhost / 127.0.0.1 等本地来源
 #   DEPLOY_DATA_DIR      选填，服务器数据目录，默认 /opt/homework-deploy/data
 #   DEPLOY_SYSTEMD_UNIT  选填，托管容器的 systemd 单元名，默认 homework
 #   DEPLOY_HEALTH_TIMEOUT 选填，健康检查最长等待秒数，默认 180
@@ -84,9 +93,12 @@ deploy_prod() {
 
     SSH_USER="${DEPLOY_SSH_USER:-root}"
     SSH_HOST="${DEPLOY_SSH_HOST:?请设置环境变量 DEPLOY_SSH_HOST（生产服务器地址）}"
-    SSH_PASS="${DEPLOY_SSH_PASS:?请设置环境变量 DEPLOY_SSH_PASS}"
+    SSH_KEY="${DEPLOY_SSH_KEY:-}"
+    SSH_PASS="${DEPLOY_SSH_PASS:-}"
     SSH_PORT="${DEPLOY_SSH_PORT:-22}"
     APP_PORT="${DEPLOY_APP_PORT:-9000}"
+    # 端口绑定地址：默认仅监听本机，避免应用端口直接暴露到公网（绕过 Nginx）
+    BIND_ADDR="${DEPLOY_BIND_ADDR:-127.0.0.1}"
     APP_UID="10001"   # Dockerfile 中 appuser 的 uid（非 root 容器）
     DEPLOY_DIR="/tmp/summer-homework-checkin"
     # 生产服务器上现行容器 bind mount 的真实数据目录
@@ -97,7 +109,39 @@ deploy_prod() {
     HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-180}"
     TS="$(date +%Y%m%d_%H%M%S)"
 
-    rexec() { sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "$@"; }
+    # ---- SSH 认证：优先密钥，否则回退到经 SSHPASS 环境变量传递的密码 ----
+    # 主机密钥校验默认 accept-new：首次连接自动记录，后续指纹变更即拒绝（防 MITM）
+    SSH_STRICT="${DEPLOY_SSH_STRICT:-accept-new}"
+    SSH_OPTS=(-o "StrictHostKeyChecking=$SSH_STRICT" -p "$SSH_PORT")
+    if [[ -n "$SSH_KEY" ]]; then
+        if [[ ! -f "$SSH_KEY" ]]; then
+            log_error "DEPLOY_SSH_KEY 指向的私钥不存在: $SSH_KEY"
+            exit 1
+        fi
+        SSH_OPTS+=(-i "$SSH_KEY" -o IdentitiesOnly=yes)
+        SSH_AUTH_MODE="key"
+        log_info "SSH 认证方式：密钥 (${SSH_KEY})"
+    elif [[ -n "$SSH_PASS" ]]; then
+        command -v sshpass >/dev/null 2>&1 || { log_error "密码认证需安装 sshpass（brew install sshpass）"; exit 1; }
+        # 关键：用 -e 从 SSHPASS 环境变量读取，而不是 -p 传参；
+        # -p 会把密码写进 argv，同机器上任何用户都能通过 ps / 读 /proc/<pid>/cmdline 看到
+        export SSHPASS="$SSH_PASS"
+        SSH_AUTH_MODE="pass"
+        log_warn "SSH 认证方式：密码（建议改用 DEPLOY_SSH_KEY 密钥认证）"
+    else
+        log_error "请设置 DEPLOY_SSH_KEY（推荐）或 DEPLOY_SSH_PASS 中的一项"
+        exit 1
+    fi
+
+    # 统一的 SSH 入口：所有远程调用（含 tar 管道、docker build）均经此函数，
+    # 避免多处手写参数导致遗漏加固项
+    rexec() {
+        if [[ "$SSH_AUTH_MODE" == "key" ]]; then
+            ssh "${SSH_OPTS[@]}" "$SSH_USER@$SSH_HOST" "$@"
+        else
+            sshpass -e ssh "${SSH_OPTS[@]}" "$SSH_USER@$SSH_HOST" "$@"
+        fi
+    }
 
     log_info "===== 生产服务器增量更新 ====="
     log_warn "目标: $SSH_USER@$SSH_HOST:$APP_PORT"
@@ -117,12 +161,27 @@ deploy_prod() {
     ALLOWED_ORIGINS="${DEPLOY_ALLOWED_ORIGINS:-}"
     if [[ -z "$ALLOWED_ORIGINS" ]]; then
         ALLOWED_ORIGINS="$(rexec "docker inspect summer-homework --format '{{range .Config.Env}}{{println .}}{{end}}'" 2>/dev/null | sed -n 's/^ALLOWED_ORIGINS=//p' | tr -d '\r' || true)"
+        # 剔除本地来源：生产环境不应信任 localhost / 127.0.0.1，否则本机任意页面
+        # （包括开发调试服务）都能带凭证跳转请求生产接口
+        if [[ -n "$ALLOWED_ORIGINS" ]]; then
+            FILTERED="$(echo "$ALLOWED_ORIGINS" | tr ',' '\n' | grep -v -E 'localhost|127\.0\.0\.1' | paste -sd ',' -)"
+            if [[ "$FILTERED" != "$ALLOWED_ORIGINS" ]]; then
+                log_warn "已从沿用的 CORS 白名单中剔除本地来源（localhost/127.0.0.1）"
+                log_warn "  原值: $ALLOWED_ORIGINS"
+            fi
+            ALLOWED_ORIGINS="$FILTERED"
+            if [[ -z "$ALLOWED_ORIGINS" ]]; then
+                log_error "沿用的 CORS 白名单过滤后为空，请显式指定 DEPLOY_ALLOWED_ORIGINS"
+                log_error "  例如: DEPLOY_ALLOWED_ORIGINS=https://example.com ./deploy.sh prod"
+                exit 1
+            fi
+        fi
     fi
     if [[ -z "$ALLOWED_ORIGINS" ]]; then
-        ALLOWED_ORIGINS="http://$SSH_HOST:$APP_PORT,http://localhost:$APP_PORT"
+        ALLOWED_ORIGINS="http://$SSH_HOST:$APP_PORT"
         log_warn "未能读取现有 CORS 白名单，使用默认值: $ALLOWED_ORIGINS"
     else
-        log_info "沿用现有 CORS 白名单: $ALLOWED_ORIGINS"
+        log_info "CORS 白名单: $ALLOWED_ORIGINS"
     fi
 
     if [[ "$SKIP_BACKUP" == "false" ]]; then
@@ -146,13 +205,11 @@ deploy_prod() {
     # COPYFILE_DISABLE=1 禁止 macOS tar 打包 AppleDouble（._*）元数据文件，
     # 否则 ._*.py 会被 alembic 误加载导致 "source code string cannot contain null bytes"
     COPYFILE_DISABLE=1 tar czf - -C "$PROJECT_DIR" --exclude='._*' --exclude='.DS_Store' summer-homework-checkin/ | \
-        sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            "cat > /tmp/homework-deploy-update.tar.gz && cd /tmp && rm -rf $DEPLOY_DIR && tar xzf homework-deploy-update.tar.gz && rm homework-deploy-update.tar.gz && echo 'TRANSFER_OK'"
+        rexec "cat > /tmp/homework-deploy-update.tar.gz && cd /tmp && rm -rf $DEPLOY_DIR && tar xzf homework-deploy-update.tar.gz && rm homework-deploy-update.tar.gz && echo 'TRANSFER_OK'"
 
     # 3. 重新构建 Docker 镜像（root 用户无需 sudo）
     log_info "重新构建 Docker 镜像..."
-    sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-        "docker build -t summer-homework-img $DEPLOY_DIR/ 2>&1 | tail -3"
+    rexec "docker build -t summer-homework-img $DEPLOY_DIR/ 2>&1 | tail -3"
 
     # 4. 停止旧服务（systemd 托管时必须用 systemctl，否则容器会在几秒内被自动拉起）
     log_info "停止旧服务..."
@@ -200,9 +257,22 @@ EOS
     rexec "chown -R $APP_UID:$APP_UID $DATA_DIR && echo 'CHOWN_OK'"
 
     # 7. 用新镜像创建容器（挂载原有数据目录），再交由 systemd/docker 启动
-    log_info "以新镜像创建容器..."
+    # 安全加固：禁止提权、丢弃所有 capabilities、限制 CPU/内存（防资源耗尽）
+    # 入口脚本以 root 启动修复 /data 属主后用 setpriv 降权到 appuser，
+    # 必须保留五项能力（全丢会 setpriv: setresuid failed 崩溃循环，本地 compose 已实测）
+    HARDEN_OPTS="--security-opt no-new-privileges --cap-drop ALL"
+    HARDEN_OPTS="$HARDEN_OPTS --cap-add CHOWN --cap-add FOWNER --cap-add DAC_OVERRIDE --cap-add SETUID --cap-add SETGID"
+    HARDEN_OPTS="$HARDEN_OPTS --memory 1g --memory-swap 1g --cpus 2"
+    # 根文件系统只读默认关闭：生产用 bind mount，与本地命名卷不同构，需先验证再开启
+    if [[ "${DEPLOY_READONLY_FS:-0}" == "1" ]]; then
+        HARDEN_OPTS="$HARDEN_OPTS --read-only --tmpfs /tmp:noexec,nosuid,size=100m"
+        log_warn "已启用容器根文件系统只读（DEPLOY_READONLY_FS=1）"
+    fi
+    log_info "以新镜像创建容器 (端口绑定 ${BIND_ADDR}:${APP_PORT})..."
     rexec "docker create --name summer-homework --restart unless-stopped \
-            -p $APP_PORT:8000 \
+            -p $BIND_ADDR:$APP_PORT:8000 \
+            $HARDEN_OPTS \
+            -e PRODUCTION=1 \
             -e DB_PATH=/data/app.db \
             -e UPLOAD_DIR=/data/uploads \
             -e SUMMER_SECRET=\$(cat $DATA_DIR/.secret_key) \

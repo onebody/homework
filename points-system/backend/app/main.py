@@ -17,7 +17,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="打卡积分兑换系统", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="打卡积分兑换系统",
+    version="1.0.0",
+    lifespan=lifespan,
+    # 生产环境（PRODUCTION 非空）关闭交互式 API 文档，避免暴露接口清单与数据结构
+    docs_url=None if os.environ.get("PRODUCTION") else "/docs",
+    redoc_url=None if os.environ.get("PRODUCTION") else "/redoc",
+    openapi_url=None if os.environ.get("PRODUCTION") else "/openapi.json",
+)
 
 # API 路由（需在静态文件挂载之前注册，保证优先匹配）
 app.include_router(checkin.router)

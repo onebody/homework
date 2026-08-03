@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..models import ChallengeTask, ChallengeCheckIn, User, Notification
 from ..utils.timeutil import now_local
+from ..utils.pagination import ADMIN_PAGE_SIZE, paginate
 from .webhook_push_service import push_challenge_event
 
 
@@ -240,14 +241,23 @@ def review_checkin(db: Session, checkin: ChallengeCheckIn, action: str, note: st
     push_challenge_event(checkin.id, "approved" if action == "approve" else "rejected")
 
 
-def list_all_checkins(db: Session, task_id: int = None, status: str = None) -> list:
-    """管理端：列出所有闯关打卡记录。"""
+def list_all_checkins(db: Session, task_id: int = None, status: str = None,
+                      page: int = None, size: int = None):
+    """管理端：列出所有闯关打卡记录。
+
+    传入 page/size 时返回 (当页记录, 分页元信息)；否则返回全量列表（兼容旧调用）。
+    """
     q = db.query(ChallengeCheckIn)
     if task_id:
         q = q.filter(ChallengeCheckIn.task_id == task_id)
     if status:
         q = q.filter(ChallengeCheckIn.review_status == status)
-    records = q.order_by(ChallengeCheckIn.created_at.desc()).all()
+    q = q.order_by(ChallengeCheckIn.created_at.desc())
+    meta = None
+    if page is not None or size is not None:
+        records, meta = paginate(q, page or 1, size or ADMIN_PAGE_SIZE)
+    else:
+        records = q.all()
     result = []
     for r in records:
         user = db.query(User).get(r.user_id)
@@ -273,7 +283,7 @@ def list_all_checkins(db: Session, task_id: int = None, status: str = None) -> l
             "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         })
-    return result
+    return (result, meta) if meta is not None else result
 
 
 def get_task_stats(db: Session, task: ChallengeTask) -> dict:

@@ -11,6 +11,9 @@ from ..models import User, ChallengeTask, ChallengeCheckIn, Notification
 from ..deps import get_current_user
 from ..services import challenge_service
 from ..utils.storage import save_upload, public_url
+from ..utils.image import validate_photo
+from ..utils.pagination import ADMIN_PAGE_SIZE
+from ..config import PHOTO_MAX_BYTES
 
 router = APIRouter(prefix="/api/challenge", tags=["challenge"])
 
@@ -138,10 +141,19 @@ async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ):
-    """上传打卡附件（图片/视频）"""
+    """上传打卡附件（仅图片）。
+
+    安全：与 /api/checkin/upload 一致，校验魔数与尺寸，拒绝非图片/伪装文件
+    与超大文件，防止任意字节落盘导致的磁盘耗尽与恶意内容托管。
+    """
     contents = await file.read()
     if len(contents) == 0:
         raise HTTPException(status_code=400, detail="文件为空")
+    if len(contents) > PHOTO_MAX_BYTES:
+        raise HTTPException(status_code=400, detail=f"文件过大（上限 {PHOTO_MAX_BYTES // (1024 * 1024)}MB）")
+    ok, detail = validate_photo(contents)
+    if not ok:
+        raise HTTPException(status_code=400, detail=detail)
 
     path = save_upload(contents, current_user.id, "challenge")
     url = public_url(path)
@@ -329,13 +341,17 @@ def admin_unlock_task(
 def admin_list_checkins(
     task_id: Optional[int] = None,
     status: Optional[str] = None,
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """管理端：获取打卡记录列表"""
+    """管理端：获取打卡记录列表（分页）"""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="仅限管理员访问")
-    return challenge_service.list_all_checkins(db, task_id=task_id, status=status)
+    items, meta = challenge_service.list_all_checkins(
+        db, task_id=task_id, status=status, page=page, size=size)
+    return {"items": items, **meta}
 
 
 @router.get("/admin/checkins/pending-count")

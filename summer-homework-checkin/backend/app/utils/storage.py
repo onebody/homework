@@ -37,7 +37,7 @@ def validate_upload_path(relative_path: str) -> bool:
 
 
 def public_url(relative_path: str) -> str:
-    """将相对路径转为可访问的 HTTP 路径。"""
+    """将相对路径转为可访问的 HTTP 路径（需携带 Bearer token，见 routers/uploads.py）。"""
     if not relative_path:
         return ""
-    return "/uploads/" + relative_path.replace(os.sep, "/")
+    return "/api/uploads/" + relative_path.replace(os.sep, "/")

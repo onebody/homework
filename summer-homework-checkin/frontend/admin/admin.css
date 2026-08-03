@@ -477,6 +477,16 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
 .push-badge.skipped{background:#f0f3f7;color:#8a97a5}
 .mobile-cards{display:none}
 
+/* ==================== 分页控件 ==================== */
+.pager{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:14px 0 4px}
+.pager button{min-width:34px;min-height:34px;padding:0 10px;background:#fff;border:1px solid #d6dee8;border-radius:8px;color:#2b3a4a;font-size:13px;line-height:32px}
+.pager button:hover:not(:disabled){border-color:#2f80ed;color:#2f80ed}
+.pager button:disabled{opacity:.45;cursor:default}
+.pg-num.on{background:#2f80ed;border-color:#2f80ed;color:#fff;font-weight:600}
+.pg-num.on:hover{color:#fff}
+.pager .pg-num.gap{border:none;background:transparent;opacity:1;min-width:20px;padding:0}
+.pg-info{margin-left:auto;color:#8a99ad;font-size:12px}
+
 @media (max-width:768px){
   .desktop-table{display:none}
   .mobile-cards{display:block}
@@ -485,4 +495,8 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
   .push-url-line .mini{min-height:44px;padding:8px 16px}
   .push-inline label{width:100%}
   .push-actions .primary{width:100%}
+  /* 移动端：分页按钮放大便于触控，页码信息单独成行居中 */
+  .pager{justify-content:center;gap:8px}
+  .pager button{min-width:40px;min-height:40px;line-height:38px;font-size:14px}
+  .pg-info{margin:4px 0 0;width:100%;text-align:center}
 }

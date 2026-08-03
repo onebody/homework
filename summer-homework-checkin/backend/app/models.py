@@ -241,7 +241,9 @@ class PushConfig(Base):
     rate_limit_per_min = Column(Integer, default=20)        # 每分钟最大推送条数，0=不限
     public_base_url = Column(String(256), nullable=True)    # 公网访问基址（用于拼照片链接，可选）
     outgoing_token = Column(String(128), nullable=True)     # 钉钉 Outgoing 验签 Token（双向消息）
-    allow_bot_review = Column(Boolean, default=False)       # 允许群内通过机器人审核打卡
+    allow_bot_review = Column(Boolean, default=False)       # 允许群内通过机器人审核打卡（钉钉/企微共用）
+    wecom_bot_token = Column(String(128), nullable=True)    # 企微智能机器人回调 Token（双向消息）
+    wecom_bot_aes_key = Column(String(64), nullable=True)   # 企微智能机器人 EncodingAESKey（43 字符）
     tpl_daily_title = Column(String(256), nullable=True,
                              default=DEFAULT_PUSH_TEMPLATES["daily_title"])      # 模板：日常打卡标题（预填默认，可编辑）
     tpl_daily_body = Column(Text, nullable=True,

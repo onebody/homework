@@ -3,13 +3,14 @@ from datetime import date
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 
-from ..models import User
+from ..models import User, CheckIn
 from ..database import get_db
 from ..schemas import CheckInOut, StreakOut
 from ..deps import get_current_user
 from ..services import checkin_service
 from ..utils.storage import save_upload, public_url
 from ..utils.image import validate_photo
+from ..utils.pagination import CLIENT_PAGE_SIZE, Page, paginate
 
 router = APIRouter(prefix="/api/checkin", tags=["checkin"])
 
@@ -73,7 +74,14 @@ def streak(user: User = Depends(get_current_user), db: Session = Depends(get_db)
     )
 
 
-@router.get("/history", response_model=list[CheckInOut])
-def history(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    items = sorted(user.checkins, key=lambda c: c.check_time, reverse=True)
-    return [CheckInOut.model_validate(c) for c in items]
+@router.get("/history", response_model=Page[CheckInOut])
+def history(
+    page: int = 1,
+    size: int = CLIENT_PAGE_SIZE,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """我的打卡记录（分页，按打卡时间倒序）。"""
+    query = db.query(CheckIn).filter(CheckIn.user_id == user.id).order_by(CheckIn.check_time.desc())
+    items, meta = paginate(query, page, size, default_size=CLIENT_PAGE_SIZE)
+    return Page[CheckInOut](items=[CheckInOut.model_validate(c) for c in items], **meta)

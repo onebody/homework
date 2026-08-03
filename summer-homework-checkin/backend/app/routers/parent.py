@@ -12,6 +12,7 @@ from ..schemas import (
 from ..routers.redeem import RedeemResult
 from ..deps import get_current_user, require_role
 from ..services import report_service, checkin_service, redeem_service, lottery_service
+from ..utils.pagination import CLIENT_PAGE_SIZE, Page, paginate
 from ..config import SUMMER_START, SUMMER_END
 
 router = APIRouter(prefix="/api/parent", tags=["parent"])
@@ -142,6 +143,24 @@ def child_mall(child_id: int, parent: User = Depends(get_current_user), db: Sess
     )
 
 
+@router.get("/redemptions/{child_id}", response_model=Page[RedemptionOut])
+def child_redemptions(
+    child_id: int,
+    page: int = 1,
+    size: int = CLIENT_PAGE_SIZE,
+    parent: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """孩子的兑换记录（分页）。"""
+    child = _resolve_child(child_id, parent, db)
+    query = (
+        db.query(Redemption).filter(Redemption.user_id == child.id)
+        .order_by(Redemption.redeemed_at.desc())
+    )
+    items, meta = paginate(query, page, size, default_size=CLIENT_PAGE_SIZE)
+    return Page[RedemptionOut](items=[RedemptionOut.model_validate(r) for r in items], **meta)
+
+
 @router.post("/redeem", response_model=RedeemResult)
 def child_redeem(
     child_id: int, req: RedeemRequest,
@@ -192,6 +211,24 @@ def child_lottery(child_id: int, parent: User = Depends(get_current_user), db: S
         "tickets": child.lottery_tickets or 0,
         "records": [LotteryRecordOut.model_validate(r) for r in records],
     }
+
+
+@router.get("/lottery/{child_id}/records", response_model=Page[LotteryRecordOut])
+def child_lottery_records(
+    child_id: int,
+    page: int = 1,
+    size: int = CLIENT_PAGE_SIZE,
+    parent: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """孩子的抽奖记录（分页）。"""
+    child = _resolve_child(child_id, parent, db)
+    query = (
+        db.query(LotteryRecord).filter(LotteryRecord.user_id == child.id)
+        .order_by(LotteryRecord.drawn_at.desc())
+    )
+    items, meta = paginate(query, page, size, default_size=CLIENT_PAGE_SIZE)
+    return Page[LotteryRecordOut](items=[LotteryRecordOut.model_validate(r) for r in items], **meta)
 
 
 @router.post("/lottery/{child_id}/draw")

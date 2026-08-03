@@ -7,7 +7,95 @@ const BASE_PATH = (() => {
   return match ? match[1] : '';
 })();
 
-createApp({
+// ---------- 认证图片渲染 ----------
+// 上传目录已改为需 Bearer token 的 /api/uploads，而 <img src> 无法携带请求头，
+// 因此统一改用 fetch 取 blob 再通过 objectURL 渲染。
+function _revokeAuthSrc(el) {
+  if (el._authObjectUrl) {
+    URL.revokeObjectURL(el._authObjectUrl);
+    el._authObjectUrl = null;
+  }
+}
+
+async function _applyAuthSrc(el, raw) {
+  _revokeAuthSrc(el);
+  el._authSrcValue = raw;
+  if (!raw) { el.removeAttribute("src"); return; }
+  // 本地预览（data:/blob:）与普通静态资源无需鉴权，直接赋值
+  if (raw.indexOf("/api/uploads/") === -1) { el.src = raw; return; }
+  const target = /^https?:/.test(raw) ? raw : BASE_PATH + raw;
+  const token = localStorage.getItem("admin_token") || "";
+  try {
+    const res = await fetch(target, {
+      headers: token ? { Authorization: "Bearer " + token } : {},
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const blob = await res.blob();
+    if (el._authSrcValue !== raw) return;   // 期间绑定值已变化，丢弃本次结果
+    el._authObjectUrl = URL.createObjectURL(blob);
+    el.src = el._authObjectUrl;
+  } catch (e) {
+    // 加载失败时不抛出，避免打断渲染；手动派发 error 以触发 @error 收尾（如灯箱取消 loading）
+    el.removeAttribute("src");
+    el.alt = "图片加载失败";
+    el.dispatchEvent(new Event("error"));
+  }
+}
+
+const authSrcDirective = {
+  mounted(el, binding) { _applyAuthSrc(el, binding.value || ""); },
+  updated(el, binding) {
+    if (binding.value === binding.oldValue) return;
+    _applyAuthSrc(el, binding.value || "");
+  },
+  unmounted(el) { _revokeAuthSrc(el); },
+};
+
+// ---------- 分页 ----------
+const PAGE_SIZE = 20;   // 后台列表每页条数
+
+// 分页控件：上一页/下一页 + 折叠页码 + "第 X/Y 页 · 共 N 条"，桌面与移动端共用
+const Pager = {
+  props: {
+    page: { type: Number, default: 1 },
+    pages: { type: Number, default: 1 },
+    total: { type: Number, default: 0 },
+  },
+  emits: ["go"],
+  computed: {
+    // 页码窗口：总页数少时全部列出；多时保留首末页并在当前页附近展开，其余折叠为 …
+    numbers() {
+      const p = this.page, n = this.pages, out = [];
+      const push = v => { if (out[out.length - 1] !== v) out.push(v); };
+      if (n <= 7) {
+        for (let i = 1; i <= n; i++) out.push(i);
+        return out;
+      }
+      push(1);
+      if (p > 3) push("…");
+      for (let i = Math.max(2, p - 1); i <= Math.min(n - 1, p + 1); i++) push(i);
+      if (p < n - 2) push("…");
+      push(n);
+      return out;
+    },
+  },
+  methods: {
+    go(p) {
+      if (p === "…" || p < 1 || p > this.pages || p === this.page) return;
+      this.$emit("go", p);
+    },
+  },
+  template: `
+    <div class="pager" v-if="total > 0">
+      <button class="pg-btn" :disabled="page<=1" @click="go(page-1)">上一页</button>
+      <button v-for="(n,i) in numbers" :key="i" class="pg-num"
+              :class="{on: n===page, gap: n==='…'}" :disabled="n==='…'" @click="go(n)">{{ n }}</button>
+      <button class="pg-btn" :disabled="page>=pages" @click="go(page+1)">下一页</button>
+      <span class="pg-info">第 {{ page }}/{{ pages }} 页 · 共 {{ total }} 条</span>
+    </div>`,
+};
+
+const app = createApp({
   data() {
     return {
       token: localStorage.getItem("admin_token") || "",
@@ -24,6 +112,15 @@ createApp({
       checkinFilter: "pending", redeemFilter: "all", challengeCheckinFilter: "pending",
       userFilter: "all",
       pendingCount: 0, redeemPendingCount: 0, challengePendingCount: 0,
+      // 各列表的分页状态（每页 PAGE_SIZE 条，由后端返回 page/pages/total 回填）
+      pg: {
+        prizes: { page: 1, pages: 1, total: 0 },
+        users: { page: 1, pages: 1, total: 0 },
+        checkins: { page: 1, pages: 1, total: 0 },
+        redeems: { page: 1, pages: 1, total: 0 },
+        challengeCheckins: { page: 1, pages: 1, total: 0 },
+        pushLogs: { page: 1, pages: 1, total: 0 },
+      },
       toast: "", toastTimer: null,
 
       // ========== 消息推送配置 ==========
@@ -85,6 +182,10 @@ createApp({
     outgoingUrl() {
       return window.location.origin + BASE_PATH + "/api/dingtalk/outgoing";
     },
+    // 企微智能机器人回调地址（展示用，同上）
+    wecomCallbackUrl() {
+      return window.location.origin + BASE_PATH + "/api/wecom/callback";
+    },
     // 手机端顶栏：当前模块中文名
     currentViewName() {
       return {
@@ -98,11 +199,7 @@ createApp({
         password: "修改密码",
       }[this.view] || "";
     },
-    // 用户管理：按角色筛选（全部/学生/家长）
-    filteredUsers() {
-      if (this.userFilter === "all") return this.users;
-      return this.users.filter(u => u.role === this.userFilter);
-    },
+    // 用户管理：按角色筛选（全部/学生/家长）已改为后端分页筛选，无需前端过滤
   },
   methods: {
     /* ==================== 基础 API ==================== */
@@ -117,6 +214,16 @@ createApp({
       return data;
     },
     showToast(m, ms = 2200) { this.toast = m; clearTimeout(this.toastTimer); this.toastTimer = setTimeout(() => (this.toast = ""), ms); },
+    /* ==================== 分页辅助 ==================== */
+    // 目标页码：显式传入优先（非法值如事件对象会被忽略），否则沿用当前页
+    pageOf(key, page) {
+      const p = Number(page);
+      return Number.isInteger(p) && p >= 1 ? p : this.pg[key].page;
+    },
+    pgq(key, page) { return `page=${this.pageOf(key, page)}&size=${PAGE_SIZE}`; },
+    applyPg(key, d) {
+      this.pg[key] = { page: d.page || 1, pages: d.pages || 1, total: d.total || 0 };
+    },
     // 卡片缩略图地址补全（模板中无法调用全局 fixUrl，这里暴露为实例方法）
     thumbUrl(url) { return fixUrl(url); },
     async bootstrap() {
@@ -233,8 +340,12 @@ createApp({
         this.tplPreviewWarning = d.warning || "";
       } catch (e) { this.showToast(e.message); }
     },
-    async loadPushLogs() {
-      try { this.pushLogs = await this.api("/api/admin/push-logs?limit=50"); }
+    async loadPushLogs(page) {
+      try {
+        const d = await this.api("/api/admin/push-logs?" + this.pgq("pushLogs", page));
+        this.pushLogs = d.items || [];
+        this.applyPg("pushLogs", d);
+      }
       catch (e) { this.showToast(e.message); }
     },
     pushStatusLabel(s) {
@@ -251,9 +362,14 @@ createApp({
     },
     async loadAll() {
       this.stats = await this.api("/api/admin/stats");
-      this.prizes = await this.api("/api/admin/prizes");
-      this.users = await this.api("/api/admin/users");
+      const p = await this.api("/api/admin/prizes?" + this.pgq("prizes"));
+      this.prizes = p.items || [];
+      this.applyPg("prizes", p);
+      const u = await this.api("/api/admin/users?" + this.pgq("users"));
+      this.users = u.items || [];
+      this.applyPg("users", u);
       await this.loadCheckins();
+      await this.loadRedeemPendingCount();
       await this.loadChallengeTasks();
       await this.refreshDashboard();
     },
@@ -378,12 +494,21 @@ createApp({
       this.showToast('已导出统计报表');
     },
     // 菜单切换时按需重拉，保证概览外的模块也显示最新数据
-    async loadPrizes() {
-      try { this.prizes = await this.api("/api/admin/prizes"); }
+    async loadPrizes(page) {
+      try {
+        const d = await this.api("/api/admin/prizes?" + this.pgq("prizes", page));
+        this.prizes = d.items || [];
+        this.applyPg("prizes", d);
+      }
       catch (e) { this.showToast(e.message); }
     },
-    async loadUsers() {
-      try { this.users = await this.api("/api/admin/users"); }
+    async loadUsers(page) {
+      try {
+        const role = this.userFilter !== "all" ? "&role=" + this.userFilter : "";
+        const d = await this.api("/api/admin/users?" + this.pgq("users", page) + role);
+        this.users = d.items || [];
+        this.applyPg("users", d);
+      }
       catch (e) { this.showToast(e.message); }
     },
     async loadPendingCount() {
@@ -392,44 +517,50 @@ createApp({
         this.pendingCount = d.count || 0;
       } catch (e) { this.pendingCount = 0; }
     },
-    async loadCheckins() {
+    async loadCheckins(page) {
       try {
-        const all = await this.api("/api/admin/checkins");
-        if (this.checkinFilter === "pending") {
-          this.checkins = all.filter(c => c.review_status === "pending");
-        } else if (this.checkinFilter === "geo") {
-          // 位置异常打卡
-          this.checkins = all.filter(c => c.geo_flag);
-        } else {
-          this.checkins = all;
-        }
-        this.pendingCount = all.filter(c => c.review_status === "pending").length;
+        // 筛选与分页均由后端完成，避免只能过滤当页数据
+        let extra = "";
+        if (this.checkinFilter === "pending") extra = "&status=pending";
+        else if (this.checkinFilter === "geo") extra = "&geo=true";
+        const d = await this.api("/api/admin/checkins?" + this.pgq("checkins", page) + extra);
+        this.checkins = d.items || [];
+        this.applyPg("checkins", d);
       } catch (e) { this.checkins = []; }
+      await this.loadPendingCount();
     },
     /* ==================== 概览统计块跳转 ==================== */
     goUsers(filter) {
       this.userFilter = filter || "all";
       this.view = "users";
+      this.loadUsers(1);   // 筛选条件变化后回到第一页
     },
     async goCheckins(filter) {
       this.checkinFilter = filter || "all";
       this.view = "checkins";
-      await this.loadCheckins();
+      await this.loadCheckins(1);
     },
     async goRedeems(filter) {
       this.redeemFilter = filter || "all";
-      await this.loadRedeems(); // loadRedeems 内部会切换 view
+      await this.loadRedeems(1); // loadRedeems 内部会切换 view
     },
-    async loadRedeems() {
+    async loadRedeems(page) {
       try {
-        const qs = this.redeemFilter !== 'all' ? `?status=${this.redeemFilter}` : '';
-        const items = await this.api("/api/admin/redemptions" + qs);
-        this.redeems = items;
-        // 计算待核实数量
-        this.redeemPendingCount = items.filter(r => r.status === 'pending').length;
+        const status = this.redeemFilter !== "all" ? "&status=" + this.redeemFilter : "";
+        const d = await this.api("/api/admin/redemptions?" + this.pgq("redeems", page) + status);
+        this.redeems = d.items || [];
+        this.applyPg("redeems", d);
       }
-      catch (e) { this.redeems = []; this.redeemPendingCount = 0; }
+      catch (e) { this.redeems = []; }
+      await this.loadRedeemPendingCount();
       this.view = "redeems";
+    },
+    // 待核实数量：分页后不能再从当页数据统计，改取 status=pending 的总数
+    async loadRedeemPendingCount() {
+      try {
+        const d = await this.api("/api/admin/redemptions?status=pending&page=1&size=1");
+        this.redeemPendingCount = d.total || 0;
+      } catch (e) { this.redeemPendingCount = 0; }
     },
     openRedeemReview(record, status) {
       this.reviewingRedeem = { record, status, note: "" };
@@ -718,7 +849,7 @@ createApp({
         try {
           const fd = new FormData();
           fd.append("photo", item.file);
-          const res = await fetch("/api/checkin/upload", {
+          const res = await fetch(BASE_PATH + "/api/checkin/upload", {
             method: "POST",
             headers: { "Authorization": "Bearer " + this.token },
             body: fd,
@@ -865,17 +996,21 @@ createApp({
     async viewChallengeCheckins(task) {
       this.viewingCheckinsTask = task;
       this.challengeCheckinFilter = "pending";
-      await this.loadChallengeCheckins(task.id);
+      await this.loadChallengeCheckins(task.id, 1);
     },
 
-    async loadChallengeCheckins(taskId) {
+    async loadChallengeCheckins(taskId, page) {
       try {
         const params = new URLSearchParams();
         params.append("task_id", taskId);
         if (this.challengeCheckinFilter === "pending") {
           params.append("status", "pending");
         }
-        this.challengeCheckins = await this.api(`/api/challenge/admin/checkins?${params}`);
+        params.append("page", this.pageOf("challengeCheckins", page));
+        params.append("size", PAGE_SIZE);
+        const d = await this.api(`/api/challenge/admin/checkins?${params}`);
+        this.challengeCheckins = d.items || [];
+        this.applyPg("challengeCheckins", d);
       } catch (e) {
         this.challengeCheckins = [];
         this.showToast("加载打卡记录失败：" + e.message);
@@ -926,7 +1061,11 @@ createApp({
       this.openViewer(images[0], images, 0);
     },
   },
-}).mount("#app");
+});
+
+app.directive("auth-src", authSrcDirective);
+app.component("pager", Pager);
+app.mount("#app");
 
 /* ==================== 工具函数 ==================== */
 
@@ -945,7 +1084,7 @@ function fixUrl(url) {
   if (!url) return "";
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
   // 相对路径补全（支持子路径部署）
-  if (url.startsWith("/uploads/") || url.startsWith("/static/")) {
+  if (url.startsWith("/api/uploads/") || url.startsWith("/uploads/") || url.startsWith("/static/")) {
     return location.origin + BASE_PATH + url;
   }
   return location.origin + BASE_PATH + "/" + url.replace(/^\.\//, "");

@@ -5,6 +5,7 @@ from ..models import User, Prize
 from ..database import get_db
 from ..schemas import PrizeCreate, PrizeUpdate, PrizeOut
 from ..deps import get_current_user, require_role
+from ..utils.pagination import ADMIN_PAGE_SIZE, Page, paginate
 
 router = APIRouter(prefix="/api", tags=["prize"])
 
@@ -16,10 +17,16 @@ def list_public_prizes(db: Session = Depends(get_db)):
     return [PrizeOut.model_validate(p) for p in items]
 
 
-@router.get("/admin/prizes", response_model=list[PrizeOut])
-def list_all_prizes(_: User = Depends(require_role("admin")), db: Session = Depends(get_db)):
-    items = db.query(Prize).order_by(Prize.category, Prize.id).all()
-    return [PrizeOut.model_validate(p) for p in items]
+@router.get("/admin/prizes", response_model=Page[PrizeOut])
+def list_all_prizes(
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """奖品管理列表（分页，含下架）。"""
+    items, meta = paginate(db.query(Prize).order_by(Prize.category, Prize.id), page, size)
+    return Page[PrizeOut](items=[PrizeOut.model_validate(p) for p in items], **meta)
 
 
 @router.post("/admin/prizes", response_model=PrizeOut)

@@ -235,3 +235,12 @@ button{font-family:inherit;cursor:pointer;border:none}
   .wheel-wrap{width:230px}
   .wheel-center{width:56px;height:56px;font-size:16px}
 }
+
+/* ==================== 分页控件 ==================== */
+.pager{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;margin:12px 0 2px}
+.pager button{min-width:36px;min-height:36px;padding:0 10px;background:#fff;border:1px solid #dbe6f2;border-radius:10px;color:var(--ink);font-size:14px;line-height:34px}
+.pager button:disabled{opacity:.4}
+.pg-num.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700}
+.pager .pg-num.gap{border:none;background:transparent;opacity:1;min-width:18px;padding:0}
+.pg-info{width:100%;text-align:center;color:var(--muted);font-size:12px;margin-top:2px}
+
