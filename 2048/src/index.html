@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#faf8ef">
+  <title>2048</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1 class="title">2048</h1>
+      <div class="scores">
+        <div class="score-box">
+          <span class="score-label">分数</span>
+          <span class="score-value" id="score">0</span>
+        </div>
+        <div class="score-box">
+          <span class="score-label">最高分</span>
+          <span class="score-value" id="best-score">0</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="intro">
+      <p>滑动屏幕移动方块，相同数字合并，挑战 <strong>2048</strong>！</p>
+      <button class="btn-new-game" id="btn-new-game">新游戏</button>
+    </div>
+
+    <div class="game-board" id="game-board">
+      <div class="grid-bg">
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+        <div class="grid-cell"></div>
+      </div>
+      <div class="tile-container" id="tile-container"></div>
+      <div class="overlay" id="overlay">
+        <div class="overlay-content">
+          <p class="overlay-message" id="overlay-message"></p>
+          <div class="overlay-buttons">
+            <button class="btn-overlay" id="btn-continue" style="display:none;">继续游戏</button>
+            <button class="btn-overlay" id="btn-retry">再来一局</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p>支持触屏滑动和键盘方向键操作</p>
+    </footer>
+  </div>
+
+  <script src="js/game.js"></script>
+</body>
+</html>

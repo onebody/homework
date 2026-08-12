@@ -34,6 +34,7 @@
 
 ## 更新摘要
 **变更内容**   
+- **增强Docker容器安全配置**：实现了全面的容器安全加固，包括只读根文件系统、最小化Linux能力、资源限制和本地端口绑定
 - **新增数据目录权限处理**：在docker-entrypoint.sh中添加了数据目录权限自动处理逻辑，确保应用以正确的权限访问持久化数据
 - **Nginx配置模块化重构**：将Nginx配置完全模块化，拆分为default.conf、sites/homework.conf和sites/points.conf三个独立配置文件
 - **Docker Compose架构更新**：更新了顶层docker-compose.yml以支持新的Nginx反向代理架构，增加了Nginx服务编排
@@ -56,13 +57,13 @@
 - 暑假作业打卡系统（summer-homework-checkin）：面向三年级学生的日常打卡、人脸比对、抽奖与报表等。
 - 打卡积分兑换系统（points-system）：基于打卡的积分获取、奖品兑换与抽奖功能。
 
-通过 Docker 与 docker-compose，可在本地一键构建镜像、启动服务、挂载持久化卷，并暴露健康检查端点用于编排与健康探测。**重大架构更新**：现已引入Nginx作为统一反向代理，采用模块化的配置文件管理，同时增强了数据目录权限处理机制，确保应用以最小权限安全运行。
+通过 Docker 与 docker-compose，可在本地一键构建镜像、启动服务、挂载持久化卷，并暴露健康检查端点用于编排与健康探测。**重大架构更新**：现已引入Nginx作为统一反向代理，采用模块化的配置文件管理，同时增强了数据目录权限处理机制，确保应用以最小权限安全运行。**最新安全增强**：全面强化了容器安全配置，包括只读根文件系统、最小化Linux能力、资源限制和本地端口绑定，符合企业级安全最佳实践。
 
 ## 项目结构
 从容器化视角，关键文件分布如下：
-- 顶层编排：docker-compose.yml（已更新支持Nginx架构）
+- 顶层编排：docker-compose.yml（已更新支持Nginx架构和安全加固）
 - Nginx配置：nginx/目录下模块化配置文件
-- 部署脚本：scripts/deploy.sh
+- 部署脚本：scripts/deploy.sh（支持生产环境安全部署）
 - 应用镜像定义：各项目的 Dockerfile 与 .dockerignore
 - 启动入口：summer-homework-checkin/docker-entrypoint.sh（新增权限处理）
 - 运行时配置：环境变量注入数据库路径、上传目录、密钥与 CORS 白名单
@@ -72,8 +73,8 @@
 ```mermaid
 graph TB
 subgraph "编排层"
-DC["docker-compose.yml"]
-DS["deploy.sh"]
+DC["docker-compose.yml<br/>安全加固配置"]
+DS["deploy.sh<br/>生产部署脚本"]
 NGINX_DC["nginx/docker-compose.yml"]
 end
 subgraph "反向代理层"
@@ -95,6 +96,7 @@ SH_SEED["backend/seed.py"]
 SH_ALEMBIC["backend/alembic/"]
 SH_VOL["volumes: summer-data:/data"]
 SH_USER["非root用户: appuser(uid 10001)"]
+SH_SECURITY["安全加固:<br/>只读根文件系统<br/>最小化能力<br/>资源限制"]
 end
 subgraph "服务: points-system"
 PS_DK["points-system/Dockerfile"]
@@ -105,6 +107,7 @@ PS_MAIN["backend/app/main.py"]
 PS_SEED["backend/seed.py"]
 PS_VOL["volumes: points-data:/data"]
 PS_USER["非root用户: appuser(uid 10001)"]
+PS_SECURITY["安全加固:<br/>只读根文件系统<br/>最小化能力<br/>资源限制"]
 end
 DC --> NGINX_DC
 DC --> SH_DK
@@ -125,26 +128,28 @@ SH_DK --> SH_MIGRATE
 SH_DK --> SH_SEED
 SH_DK --> SH_ALEMBIC
 SH_DK --> SH_USER
+SH_DK --> SH_SECURITY
 PS_DK --> PS_CFG
 PS_DK --> PS_DB
 PS_DK --> PS_MAIN
 PS_DK --> PS_SEED
 PS_DK --> PS_VOL
 PS_DK --> PS_USER
+PS_DK --> PS_SECURITY
 ```
 
 **图示来源**
-- [docker-compose.yml:1-59](file://docker-compose.yml#L1-L59)
-- [nginx/docker-compose.yml:1-50](file://nginx/docker-compose.yml#L1-L50)
-- [nginx/default.conf:1-100](file://nginx/default.conf#L1-L100)
-- [nginx/sites/homework.conf:1-50](file://nginx/sites/homework.conf#L1-L50)
-- [nginx/sites/points.conf:1-50](file://nginx/sites/points.conf#L1-L50)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
+- [docker-compose.yml:1-119](file://docker-compose.yml#L1-L119)
+- [nginx/docker-compose.yml:1-44](file://nginx/docker-compose.yml#L1-L44)
+- [nginx/default.conf:1-53](file://nginx/default.conf#L1-L53)
+- [nginx/sites/homework.conf:1-17](file://nginx/sites/homework.conf#L1-L17)
+- [nginx/sites/points.conf:1-18](file://nginx/sites/points.conf#L1-L18)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
 
 **章节来源**
-- [docker-compose.yml:1-59](file://docker-compose.yml#L1-L59)
-- [nginx/docker-compose.yml:1-50](file://nginx/docker-compose.yml#L1-L50)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
+- [docker-compose.yml:1-119](file://docker-compose.yml#L1-L119)
+- [nginx/docker-compose.yml:1-44](file://nginx/docker-compose.yml#L1-L44)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
 
 ## 核心组件
 - 镜像构建
@@ -171,27 +176,33 @@ PS_DK --> PS_USER
   - **新增** 自动数据库备份机制，在每次启动前将现有数据库备份到 backups 目录。
 - 健康检查
   - 每个服务提供 /api/health 端点，供编排器进行健康探测。
+- **新增** 容器安全加固
+  - **只读根文件系统**：启用 read_only: true，防止容器内恶意修改系统文件
+  - **最小化Linux能力**：丢弃所有能力后仅保留必要的5个能力（CHOWN、FOWNER、DAC_OVERRIDE、SETUID、SETGID）
+  - **禁止提权**：启用 no-new-privileges 防止容器内进程提权
+  - **资源限制**：限制CPU为2.0核，内存为1GB，防止资源耗尽攻击
+  - **本地端口绑定**：仅绑定127.0.0.1，避免端口意外暴露到网络
 
 **章节来源**
-- [summer-homework-checkin/Dockerfile:1-22](file://summer-homework-checkin/Dockerfile#L1-L22)
+- [summer-homework-checkin/Dockerfile:1-34](file://summer-homework-checkin/Dockerfile#L1-L34)
 - [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-L22)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
-- [nginx/default.conf:1-100](file://nginx/default.conf#L1-L100)
-- [nginx/sites/homework.conf:1-50](file://nginx/sites/homework.conf#L1-L50)
-- [nginx/sites/points.conf:1-50](file://nginx/sites/points.conf#L1-L50)
-- [summer-homework-checkin/backend/app/config.py:1-80](file://summer-homework-checkin/backend/app/config.py#L1-80)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
+- [nginx/default.conf:1-53](file://nginx/default.conf#L1-L53)
+- [nginx/sites/homework.conf:1-17](file://nginx/sites/homework.conf#L1-L17)
+- [nginx/sites/points.conf:1-18](file://nginx/sites/points.conf#L1-L18)
+- [summer-homework-checkin/backend/app/config.py:1-80](file://summer-homework-checkin/backend/app/config.py#L1-L80)
 - [points-system/backend/app/config.py:1-17](file://points-system/backend/app/config.py#L1-L17)
-- [docker-compose.yml:1-59](file://docker-compose.yml#L1-L59)
+- [docker-compose.yml:17-108](file://docker-compose.yml#L17-L108)
 
 ## 架构总览
-下图展示了新的Nginx反向代理架构下的容器化部署关系、端口映射、环境变量与数据卷挂载。
+下图展示了新的Nginx反向代理架构下的容器化部署关系、端口映射、环境变量与数据卷挂载，以及增强的安全配置。
 
 ```mermaid
 graph TB
 Client["浏览器/客户端"]
 Nginx["Nginx反向代理<br/>端口: 80, 443<br/>模块化配置"]
-SH["summer-homework<br/>容器:8000<br/>用户: appuser(uid 10001)<br/>权限处理: docker-entrypoint.sh"]
-PS["points-system<br/>容器:8000(宿主机:8001)<br/>用户: appuser(uid 10001)"]
+SH["summer-homework<br/>容器:8000<br/>用户: appuser(uid 10001)<br/>权限处理: docker-entrypoint.sh<br/>安全加固: 只读FS+最小化能力"]
+PS["points-system<br/>容器:8000(宿主机:8001)<br/>用户: appuser(uid 10001)<br/>安全加固: 只读FS+最小化能力"]
 VolSH["volume: summer-data:/data"]
 VolPS["volume: points-data:/data"]
 EnvVars["环境变量配置<br/>SUMMER_SECRET, ALLOWED_ORIGINS,<br/>ADMIN_INIT_PASSWORD等"]
@@ -200,6 +211,7 @@ AdminInit["管理员账户初始化<br/>ADMIN_INIT_PASSWORD"]
 DefaultConf["default.conf<br/>全局配置"]
 HomeworkConf["sites/homework.conf<br/>作业系统配置"]
 PointsConf["sites/points.conf<br/>积分系统配置"]
+SecurityConfig["安全配置:<br/>read_only: true<br/>cap_drop: ALL<br/>cap_add: 5项<br/>no-new-privileges<br/>资源限制: 2.0 CPU, 1GB"]
 Client --> |http://localhost:80| Nginx
 Nginx --> |/homework/*| SH
 Nginx --> |/points/*| PS
@@ -213,16 +225,20 @@ PS --> EnvVars
 SH --> BackupDir
 SH --> AdminInit
 PS --> AdminInit
+SH --> SecurityConfig
+PS --> SecurityConfig
 ```
 
 **图示来源**
-- [nginx/docker-compose.yml:10-50](file://nginx/docker-compose.yml#L10-L50)
-- [nginx/default.conf:1-100](file://nginx/default.conf#L1-L100)
-- [nginx/sites/homework.conf:1-50](file://nginx/sites/homework.conf#L1-L50)
-- [nginx/sites/points.conf:1-50](file://nginx/sites/points.conf#L1-L50)
+- [nginx/docker-compose.yml:20-44](file://nginx/docker-compose.yml#L20-L44)
+- [nginx/default.conf:23-53](file://nginx/default.conf#L23-L53)
+- [nginx/sites/homework.conf:7-17](file://nginx/sites/homework.conf#L7-L17)
+- [nginx/sites/points.conf:8-18](file://nginx/sites/points.conf#L8-L18)
+- [docker-compose.yml:45-65](file://docker-compose.yml#L45-L65)
+- [docker-compose.yml:91-102](file://docker-compose.yml#L91-L102)
 
 **章节来源**
-- [nginx/docker-compose.yml:10-50](file://nginx/docker-compose.yml#L10-L50)
+- [nginx/docker-compose.yml:20-44](file://nginx/docker-compose.yml#L20-L44)
 
 ## 详细组件分析
 
@@ -256,15 +272,15 @@ N-->>U : 返回响应(可能经过Gzip压缩)
 ```
 
 **图示来源**
-- [nginx/default.conf:1-100](file://nginx/default.conf#L1-L100)
-- [nginx/sites/homework.conf:1-50](file://nginx/sites/homework.conf#L1-L50)
-- [nginx/sites/points.conf:1-50](file://nginx/sites/points.conf#L1-L50)
+- [nginx/default.conf:23-53](file://nginx/default.conf#L23-L53)
+- [nginx/sites/homework.conf:7-17](file://nginx/sites/homework.conf#L7-L17)
+- [nginx/sites/points.conf:8-18](file://nginx/sites/points.conf#L8-L18)
 
 **章节来源**
-- [nginx/default.conf:1-100](file://nginx/default.conf#L1-L100)
-- [nginx/sites/homework.conf:1-50](file://nginx/sites/homework.conf#L1-L50)
-- [nginx/sites/points.conf:1-50](file://nginx/sites/points.conf#L1-L50)
-- [nginx/docker-compose.yml:1-50](file://nginx/docker-compose.yml#L1-L50)
+- [nginx/default.conf:23-53](file://nginx/default.conf#L23-L53)
+- [nginx/sites/homework.conf:7-17](file://nginx/sites/homework.conf#L7-L17)
+- [nginx/sites/points.conf:8-18](file://nginx/sites/points.conf#L8-L18)
+- [nginx/docker-compose.yml:20-44](file://nginx/docker-compose.yml#L20-L44)
 
 ### 暑假作业打卡系统（summer-homework-checkin）
 - 镜像构建要点
@@ -300,6 +316,12 @@ N-->>U : 返回响应(可能经过Gzip压缩)
   - SQLite + WAL 模式 + busy_timeout，降低并发写冲突风险。
 - 健康检查
   - compose 中通过 HTTP GET /api/health 探测服务可用性。
+- **新增** 容器安全加固
+  - **只读根文件系统**：启用 read_only: true，防止容器内恶意修改系统文件
+  - **最小化Linux能力**：丢弃所有能力后仅保留必要的5个能力（CHOWN、FOWNER、DAC_OVERRIDE、SETUID、SETGID）
+  - **禁止提权**：启用 no-new-privileges 防止容器内进程提权
+  - **资源限制**：限制CPU为2.0核，内存为1GB，防止资源耗尽攻击
+  - **本地端口绑定**：仅绑定127.0.0.1:8000，避免端口意外暴露到网络
 
 ```mermaid
 sequenceDiagram
@@ -330,25 +352,26 @@ P-->>C : 返回 {"status" : "ok"}
 ```
 
 **图示来源**
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
-- [summer-homework-checkin/Dockerfile:20-22](file://summer-homework-checkin/Dockerfile#L20-L22)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
+- [summer-homework-checkin/Dockerfile:24-34](file://summer-homework-checkin/Dockerfile#L24-L34)
 - [summer-homework-checkin/backend/migrate.py:134-158](file://summer-homework-checkin/backend/migrate.py#L134-L158)
 - [summer-homework-checkin/backend/app/main.py:45-61](file://summer-homework-checkin/backend/app/main.py#L45-L61)
 - [summer-homework-checkin/backend/app/database.py:13-22](file://summer-homework-checkin/backend/app/database.py#L13-L22)
-- [docker-compose.yml:29-34](file://docker-compose.yml#L29-L34)
+- [docker-compose.yml:45-71](file://docker-compose.yml#L45-L71)
 
 **章节来源**
-- [summer-homework-checkin/Dockerfile:1-22](file://summer-homework-checkin/Dockerfile#L1-22)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
-- [summer-homework-checkin/backend/migrate.py:1-158](file://summer-homework-checkin/backend/migrate.py#L1-158)
-- [summer-homework-checkin/backend/alembic.ini:1-41](file://summer-homework-checkin/backend/alembic.ini#L1-41)
-- [summer-homework-checkin/backend/alembic/env.py:1-57](file://summer-homework-checkin/backend/alembic/env.py#L1-57)
-- [summer-homework-checkin/backend/alembic/versions/001_initial.py:1-183](file://summer-homework-checkin/backend/alembic/versions/001_initial.py#L1-183)
-- [summer-homework-checkin/backend/app/config.py:1-80](file://summer-homework-checkin/backend/app/config.py#L1-80)
-- [summer-homework-checkin/backend/app/main.py:1-64](file://summer-homework-checkin/backend/app/main.py#L1-64)
-- [summer-homework-checkin/backend/app/database.py:1-31](file://summer-homework-checkin/backend/app/database.py#L1-31)
-- [summer-homework-checkin/backend/app/security.py:1-54](file://summer-homework-checkin/backend/app/security.py#L1-54)
-- [summer-homework-checkin/README.md:1-126](file://summer-homework-checkin/README.md#L1-126)
+- [summer-homework-checkin/Dockerfile:1-34](file://summer-homework-checkin/Dockerfile#L1-L34)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
+- [summer-homework-checkin/backend/migrate.py:1-158](file://summer-homework-checkin/backend/migrate.py#L1-L158)
+- [summer-homework-checkin/backend/alembic.ini:1-41](file://summer-homework-checkin/backend/alembic.ini#L1-L41)
+- [summer-homework-checkin/backend/alembic/env.py:1-57](file://summer-homework-checkin/backend/alembic/env.py#L1-L57)
+- [summer-homework-checkin/backend/alembic/versions/001_initial.py:1-183](file://summer-homework-checkin/backend/alembic/versions/001_initial.py#L1-L183)
+- [summer-homework-checkin/backend/app/config.py:1-80](file://summer-homework-checkin/backend/app/config.py#L1-L80)
+- [summer-homework-checkin/backend/app/main.py:1-64](file://summer-homework-checkin/backend/app/main.py#L1-L64)
+- [summer-homework-checkin/backend/app/database.py:1-31](file://summer-homework-checkin/backend/app/database.py#L1-L31)
+- [summer-homework-checkin/backend/app/security.py:1-54](file://summer-homework-checkin/backend/app/security.py#L1-L54)
+- [summer-homework-checkin/README.md:1-126](file://summer-homework-checkin/README.md#L1-L126)
+- [docker-compose.yml:45-71](file://docker-compose.yml#L45-L71)
 
 ### 打卡积分兑换系统（points-system）
 - 镜像构建要点
@@ -363,6 +386,12 @@ P-->>C : 返回 {"status" : "ok"}
   - 挂载根路径静态前端，提供 /api/health 健康检查端点。
 - 数据库与并发
   - SQLite + WAL 模式 + busy_timeout，确保多线程访问稳定性。
+- **新增** 容器安全加固
+  - **只读根文件系统**：启用 read_only: true，防止容器内恶意修改系统文件
+  - **最小化Linux能力**：丢弃所有能力，无需额外能力授予
+  - **禁止提权**：启用 no-new-privileges 防止容器内进程提权
+  - **资源限制**：限制CPU为2.0核，内存为1GB，防止资源耗尽攻击
+  - **本地端口绑定**：仅绑定127.0.0.1:8001，避免端口意外暴露到网络
 
 ```mermaid
 flowchart TD
@@ -374,20 +403,23 @@ AdminInit --> Uvicorn["启动 uvicorn 监听 8000 端口"]
 Uvicorn --> Health["暴露 /api/health 健康检查"]
 Uvicorn --> Static["挂载静态前端资源"]
 Uvicorn --> API["注册业务路由"]
+Uvicorn --> Security["安全加固:<br/>只读FS+最小化能力<br/>资源限制+本地端口"]
 ```
 
 **图示来源**
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
-- [points-system/Dockerfile:20-22](file://points-system/Dockerfile#L20-22)
-- [points-system/backend/app/main.py:32-39](file://points-system/backend/app/main.py#L32-39)
-- [points-system/backend/seed.py:38-87](file://points-system/backend/seed.py#L38-87)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
+- [points-system/Dockerfile:20-22](file://points-system/Dockerfile#L20-L22)
+- [points-system/backend/app/main.py:32-39](file://points-system/backend/app/main.py#L32-L39)
+- [points-system/backend/seed.py:38-87](file://points-system/backend/seed.py#L38-L87)
+- [docker-compose.yml:91-108](file://docker-compose.yml#L91-L108)
 
 **章节来源**
-- [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-22)
+- [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-L22)
 - [points-system/backend/app/config.py:1-17](file://points-system/backend/app/config.py#L1-L17)
-- [points-system/backend/app/main.py:1-39](file://points-system/backend/app/main.py#L1-39)
+- [points-system/backend/app/main.py:1-39](file://points-system/backend/app/main.py#L1-L39)
 - [points-system/backend/database.py:1-41](file://points-system/backend/database.py#L1-L41)
-- [points-system/backend/seed.py:1-87](file://points-system/backend/seed.py#L1-87)
+- [points-system/backend/seed.py:1-87](file://points-system/backend/seed.py#L1-L87)
+- [docker-compose.yml:91-108](file://docker-compose.yml#L91-L108)
 
 ## 依赖分析
 - 基础镜像与网络
@@ -402,6 +434,9 @@ Uvicorn --> API["注册业务路由"]
   - 使用官方nginx:latest镜像作为反向代理。
   - 支持HTTP/2和TLS终止。
   - 内置Gzip压缩和静态资源缓存。
+- **新增** 安全依赖
+  - 容器安全配置需要Docker Engine支持security_opt、capabilities和资源限制功能
+  - 生产部署脚本依赖sshpass用于密码认证，可选安装
 
 ```mermaid
 graph LR
@@ -426,29 +461,35 @@ V["Nginx 反向代理"] --> W["nginx:latest"]
 V --> X["default.conf"]
 V --> Y["sites/homework.conf"]
 V --> Z["sites/points.conf"]
+AA["安全加固"] --> BB["只读根文件系统"]
+AA --> CC["最小化Linux能力"]
+AA --> DD["资源限制"]
+AA --> EE["本地端口绑定"]
 ```
 
 **图示来源**
-- [summer-homework-checkin/Dockerfile:9-15](file://summer-homework-checkin/Dockerfile#L9-L15)
-- [points-system/Dockerfile:9-15](file://points-system/Dockerfile#L9-L15)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
+- [summer-homework-checkin/Dockerfile:1-34](file://summer-homework-checkin/Dockerfile#L1-L34)
+- [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-L22)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
 - [summer-homework-checkin/backend/requirements.docker.txt:1-15](file://summer-homework-checkin/backend/requirements.docker.txt#L1-L15)
 - [summer-homework-checkin/backend/requirements.txt:1-11](file://summer-homework-checkin/backend/requirements.txt#L1-L11)
 - [points-system/backend/requirements.txt:1-8](file://points-system/backend/requirements.txt#L1-L8)
 - [summer-homework-checkin/.dockerignore:1-21](file://summer-homework-checkin/.dockerignore#L1-L21)
 - [points-system/.dockerignore:1-13](file://points-system/.dockerignore#L1-L13)
-- [nginx/docker-compose.yml:1-50](file://nginx/docker-compose.yml#L1-L50)
+- [nginx/docker-compose.yml:20-44](file://nginx/docker-compose.yml#L20-L44)
+- [docker-compose.yml:45-108](file://docker-compose.yml#L45-L108)
 
 **章节来源**
-- [summer-homework-checkin/Dockerfile:1-22](file://summer-homework-checkin/Dockerfile#L1-22)
+- [summer-homework-checkin/Dockerfile:1-34](file://summer-homework-checkin/Dockerfile#L1-L34)
 - [points-system/Dockerfile:1-22](file://points-system/Dockerfile#L1-L22)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
 - [summer-homework-checkin/backend/requirements.docker.txt:1-15](file://summer-homework-checkin/backend/requirements.docker.txt#L1-L15)
 - [summer-homework-checkin/backend/requirements.txt:1-11](file://summer-homework-checkin/backend/requirements.txt#L1-L11)
 - [points-system/backend/requirements.txt:1-8](file://points-system/backend/requirements.txt#L1-L8)
 - [summer-homework-checkin/.dockerignore:1-21](file://summer-homework-checkin/.dockerignore#L1-L21)
 - [points-system/.dockerignore:1-13](file://points-system/.dockerignore#L1-L13)
-- [nginx/docker-compose.yml:1-50](file://nginx/docker-compose.yml#L1-L50)
+- [nginx/docker-compose.yml:20-44](file://nginx/docker-compose.yml#L20-L44)
+- [docker-compose.yml:45-108](file://docker-compose.yml#L45-L108)
 
 ## 性能考虑
 - 镜像构建优化
@@ -466,6 +507,7 @@ V --> Z["sites/points.conf"]
 - **安全性能** 非root用户运行带来的额外开销极小，但显著提升了安全性。
 - **新增** 静态资源缓存：Nginx缓存CSS、JS、图片等静态文件，减少重复传输。
 - **新增** Gzip压缩：Nginx自动压缩文本类响应，减少带宽消耗。
+- **新增** 资源限制：通过CPU和内存限制防止资源耗尽攻击，提高系统稳定性。
 
 ## 故障排查指南
 - 无法访问服务
@@ -508,24 +550,36 @@ V --> Z["sites/points.conf"]
   - 确认端口占用：netstat -tuln | grep :80。
   - 检查防火墙规则是否允许80端口访问。
   - **新增** 验证反向代理规则：curl -v http://localhost/homework/api/health。
+- **新增** 安全配置问题
+  - 检查容器是否以只读根文件系统运行：docker inspect <container_name> | grep ReadRootFs
+  - 验证Linux能力限制：docker inspect <container_name> | grep Capabilities
+  - 确认资源限制生效：docker stats <container_name>
+  - 检查端口绑定是否为localhost：docker port <container_name>
+  - 验证no-new-privileges设置：docker inspect <container_name> | grep NoNewPrivileges
 
 **章节来源**
-- [docker-compose.yml:17-54](file://docker-compose.yml#L17-L54)
+- [docker-compose.yml:24-26](file://docker-compose.yml#L24-L26)
+- [docker-compose.yml:79-81](file://docker-compose.yml#L79-L81)
 - [summer-homework-checkin/backend/app/config.py:24-45](file://summer-homework-checkin/backend/app/config.py#L24-L45)
 - [points-system/backend/database.py:6-10](file://points-system/backend/database.py#L6-L10)
 - [summer-homework-checkin/.dockerignore:1-21](file://summer-homework-checkin/.dockerignore#L1-L21)
 - [points-system/.dockerignore:1-13](file://points-system/.dockerignore#L1-L13)
-- [summer-homework-checkin/backend/migrate.py:1-158](file://summer-homework-checkin/backend/migrate.py#L1-158)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
-- [nginx/default.conf:1-100](file://nginx/default.conf#L1-L100)
+- [summer-homework-checkin/backend/migrate.py:1-158](file://summer-homework-checkin/backend/migrate.py#L1-L158)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
+- [nginx/default.conf:23-53](file://nginx/default.conf#L23-L53)
+- [docker-compose.yml:45-108](file://docker-compose.yml#L45-L108)
 
 ## 结论
-本项目通过标准化的 Dockerfile 与 docker-compose 编排，实现了两个独立应用的快速本地部署与演示。**重大架构更新**：现已引入Nginx作为统一反向代理，采用模块化的配置文件管理，同时增强了数据目录权限处理机制。新的架构确保了：
+本项目通过标准化的 Dockerfile 与 docker-compose 编排，实现了两个独立应用的快速本地部署与演示。**重大架构更新**：现已引入Nginx作为统一反向代理，采用模块化的配置文件管理，同时增强了数据目录权限处理机制。**最新安全增强**：全面强化了容器安全配置，包括只读根文件系统、最小化Linux能力、资源限制和本地端口绑定，符合企业级安全最佳实践。新的架构确保了：
 - 所有容器以appuser（uid 10001）非root用户运行，限制潜在安全风险
 - 管理员账户通过ADMIN_INIT_PASSWORD环境变量安全初始化
 - 所有密钥必须显式配置，杜绝自动生成的随机密钥
 - 环境变量验证机制防止未配置的敏感信息
 - Nginx统一入口提供静态资源缓存和请求优化
+- **新增** 只读根文件系统防止容器内恶意修改系统文件
+- **新增** 最小化Linux能力限制，仅保留必要的5个能力
+- **新增** 资源限制防止资源耗尽攻击
+- **新增** 本地端口绑定避免端口意外暴露
 - 符合企业级安全最佳实践和审计要求
 
 配合完整的 Alembic 数据库迁移系统和增强的启动流程，以及Nginx的反向代理能力，为数据安全和业务连续性提供了有力保障。建议在正式环境中：
@@ -539,6 +593,8 @@ V --> Z["sites/points.conf"]
 - **新增** 配置Nginx的SSL证书和HTTPS支持。
 - **新增** 设置Nginx的请求限制和访问控制。
 - **新增** 监控Nginx的性能指标和错误日志。
+- **新增** 定期验证容器安全配置的有效性。
+- **新增** 监控资源使用情况，确保不超过限制。
 
 ## 附录
 - 常用命令
@@ -554,10 +610,14 @@ V --> Z["sites/points.conf"]
   - **新增** 验证环境变量：docker-compose config
   - **新增** 检查容器用户：docker exec -it <container_name> whoami
   - **新增** 测试反向代理：curl -v http://localhost/homework/api/health
+  - **新增** 检查容器安全配置：docker inspect <container_name>
+  - **新增** 监控资源使用：docker stats <container_name>
+  - **新增** 验证端口绑定：docker port <container_name>
 - 访问地址
   - 暑假作业打卡系统：http://localhost/homework/ 与 http://localhost/homework/admin/
   - 打卡积分兑换系统：http://localhost/points/
   - **新增** Nginx健康检查：http://localhost/nginx-health
+  - **新增** 本地直连调试：http://127.0.0.1:8000/ 和 http://127.0.0.1:8001/
 - **安全更新** 环境变量配置示例
   ```bash
   # 创建 .env 文件用于生产环境（必须包含所有必需的环境变量）
@@ -590,6 +650,11 @@ V --> Z["sites/points.conf"]
   # 测试反向代理路由
   curl -v http://localhost/homework/api/health
   curl -v http://localhost/points/api/health
+  
+  # 验证安全配置
+  docker inspect <container_name> | grep -E "(ReadRootFs|NoNewPrivileges|Capabilities)"
+  docker inspect <container_name> | grep -A 5 "Resources"
+  docker port <container_name>
   ```
 - **新增** Nginx配置管理
   ```bash
@@ -605,13 +670,35 @@ V --> Z["sites/points.conf"]
   # 查看Nginx访问日志
   docker exec nginx-container tail -f /var/log/nginx/access.log
   ```
+- **新增** 安全配置验证
+  ```bash
+  # 检查只读根文件系统
+  docker inspect summer-homework | grep ReadRootFs
+  docker inspect points-system | grep ReadRootFs
+  
+  # 检查Linux能力限制
+  docker inspect summer-homework | grep -A 10 "CapAdd"
+  docker inspect points-system | grep -A 10 "CapAdd"
+  
+  # 检查资源限制
+  docker inspect summer-homework | grep -A 5 "Memory"
+  docker inspect points-system | grep -A 5 "Memory"
+  
+  # 检查端口绑定
+  docker port summer-homework
+  docker port points-system
+  
+  # 监控资源使用
+  docker stats summer-homework points-system
+  ```
 
 **章节来源**
-- [docker-compose.yml:1-8](file://docker-compose.yml#L1-L8)
+- [docker-compose.yml:1-119](file://docker-compose.yml#L1-L119)
 - [summer-homework-checkin/backend/app/config.py:24-45](file://summer-homework-checkin/backend/app/config.py#L24-L45)
 - [docker-compose.yml:23-25](file://docker-compose.yml#L23-L25)
 - [summer-homework-checkin/backend/migrate.py:134-158](file://summer-homework-checkin/backend/migrate.py#L134-L158)
-- [summer-homework-checkin/docker-entrypoint.sh:1-50](file://summer-homework-checkin/docker-entrypoint.sh#L1-L50)
-- [nginx/default.conf:1-100](file://nginx/default.conf#L1-L100)
-- [nginx/sites/homework.conf:1-50](file://nginx/sites/homework.conf#L1-L50)
-- [nginx/sites/points.conf:1-50](file://nginx/sites/points.conf#L1-L50)
+- [summer-homework-checkin/docker-entrypoint.sh:1-20](file://summer-homework-checkin/docker-entrypoint.sh#L1-L20)
+- [nginx/default.conf:23-53](file://nginx/default.conf#L23-L53)
+- [nginx/sites/homework.conf:7-17](file://nginx/sites/homework.conf#L7-L17)
+- [nginx/sites/points.conf:8-18](file://nginx/sites/points.conf#L8-L18)
+- [docker-compose.yml:45-108](file://docker-compose.yml#L45-L108)
