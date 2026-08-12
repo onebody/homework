@@ -222,8 +222,10 @@ def reject_checkin(db, ci, note=None):
 def _validate_photo_size(data):
     from ..config import MIN_PHOTO_BYTES, PHOTO_MAX_BYTES
     from ..utils.image import inspect_image
-    if not (MIN_PHOTO_BYTES <= len(data) <= PHOTO_MAX_BYTES):
-        return False, "照片体积不符合要求（需大于 5KB 且小于 10MB）"
+    if len(data) > PHOTO_MAX_BYTES:
+        return False, f"照片体积过大（{len(data)//1024//1024}MB），请压缩后重新上传（最大 {PHOTO_MAX_BYTES//1024//1024}MB）"
+    if len(data) < MIN_PHOTO_BYTES:
+        return False, f"照片体积过小（{len(data)//1024}KB），请上传清晰的现场照片（最小 {MIN_PHOTO_BYTES//1024}KB）"
     ok, w, h, fmt = inspect_image(data)
     if not ok:
         return False, "文件不是有效的 JPEG/PNG 图像"

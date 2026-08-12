@@ -5,10 +5,11 @@
 #   docker compose -f nginx/docker-compose.yml up -d
 # 两套编排通过外部共享网络 hanghang-net 互通（首次需手动创建）：
 #   docker network create hanghang-net
-# 访问（统一经 nginx 反向代理）：
-#   summer-homework 学生端  http://localhost/homework/
-#   summer-homework 管理端  http://localhost/homework/admin/
-#   points-system    前端    http://localhost/points/
+# 访问（统一经 nginx 反向代理，端口 7765）：
+#   导航页                  http://localhost:7765/
+#   summer-homework 学生端  http://localhost:7765/homework/
+#   summer-homework 管理端  http://localhost:7765/homework/admin/
+#   points-system    前端    http://localhost:7765/points/
 # 直连调试入口（绕过 nginx）：
 #   summer-homework  http://localhost:8000/
 #   points-system    http://localhost:8001/
@@ -30,7 +31,7 @@ services:
       UPLOAD_DIR: /data/uploads
       # 安全配置（生产环境必须通过 .env 文件或环境变量注入强随机密钥）
       SUMMER_SECRET: ${SUMMER_SECRET:?请在 .env 或环境变量中设置 SUMMER_SECRET}
-      ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000,http://localhost,http://127.0.0.1
+      ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000,http://localhost:7765,http://127.0.0.1:7765,http://localhost,http://127.0.0.1
       # 生产环境关闭 /docs、/redoc、/openapi.json（避免公开接口清单与数据结构）
       PRODUCTION: ${PRODUCTION:-1}
       # 初始管理员密码（仅本地测试；未设置则 seed 自动生成随机密码）

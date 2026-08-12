@@ -74,8 +74,8 @@ async def security_headers_middleware(request: Request, call_next):
     # 内容安全策略：缓解 XSS（限制脚本/样式来源；CDN 依赖与内联样式已显式放行）
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-eval' https://cdn.bootcdn.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.bootcdn.net; "
+        "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data: blob:; "
         "connect-src 'self'; "
         "object-src 'none'; "

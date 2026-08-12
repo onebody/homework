@@ -8,6 +8,173 @@ const BASE_PATH = (() => {
   return match ? match[1] : '';
 })();
 
+// ---------- 图片自动压缩（彻底兼容微信内置浏览器） ----------
+// 后端限制：PHOTO_MAX_BYTES = 10MB，MIN_PHOTO_BYTES = 5KB
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+const COMPRESS_MAX_DIM = 2048;
+const COMPRESS_QUALITY_STEPS = [0.85, 0.7, 0.55, 0.4];
+
+/**
+ * 将 Blob 转为可被 FormData 接受的对象（兼容微信 X5/旧 WebView）
+ * 核心修复：微信 X5 内核的 FormData 不认 Blob.name 属性，
+ * 必须在 fd.append() 时显式传入第三个参数（文件名）才能作为文件上传
+ */
+function blobToFile(blob, name) {
+  var fileName = name || 'photo.jpg';
+  try {
+    if (typeof File !== 'undefined') {
+      var f = new File([blob], fileName, { type: blob.type });
+      // 验证 File 构造是否真正成功（部分微信版本 typeof File 存在但构造无效）
+      if (f.name === fileName && f.size === blob.size) return f;
+    }
+  } catch (e) { /* 回退 */ }
+  // 回退：给 Blob 附加属性（旧版 X5 不认，但配合 fd.append 三参数版本可兼容）
+  try { blob.name = fileName; } catch (e) {}
+  try { blob.lastModified = Date.now(); } catch (e) {}
+  return blob;
+}
+
+/**
+ * 安全地将 canvas 导出为 Blob（优先 toBlob，回退 toDataURL）
+ * toBlob 直接产出二进制，无需 base64 编解码，内存效率远高于 toDataURL
+ * 微信旧 WebView 可能不支持 toBlob，此时回退到 toDataURL + 手动解码
+ */
+function _canvasToBlob(canvas, type, quality) {
+  return new Promise(function (resolve) {
+    if (typeof canvas.toBlob === 'function') {
+      try {
+        canvas.toBlob(function (blob) {
+          if (blob && blob.size > 0) { resolve(blob); return; }
+          // toBlob 返回空结果，回退
+          resolve(_dataURLtoBlob(canvas.toDataURL(type, quality)));
+        }, type, quality);
+        return;
+      } catch (e) { /* 回退 */ }
+    }
+    // toBlob 不可用或抛错，使用 toDataURL 回退
+    resolve(_dataURLtoBlob(canvas.toDataURL(type, quality)));
+  });
+}
+
+/** dataURL 转 Blob（分块解码防微信 WebView 栈溢出） */
+function _dataURLtoBlob(dataUrl) {
+  var parts = dataUrl.split(',');
+  var mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/jpeg';
+  var base64 = parts[1];
+  var byteStr = atob(base64);
+  var arr = new Uint8Array(byteStr.length);
+  var chunk = 8192;
+  for (var i = 0; i < byteStr.length; i += chunk) {
+    var end = Math.min(i + chunk, byteStr.length);
+    for (var j = i; j < end; j++) arr[j] = byteStr.charCodeAt(j);
+  }
+  return new Blob([arr], { type: mime });
+}
+
+/** 读取 EXIF 方向值 */
+function _getExifOrientation(dataUrl) {
+  try {
+    var raw = atob(dataUrl.split(',')[1].substring(0, 8192));
+    for (var i = 0; i < raw.length - 8; i++) {
+      if (raw.charCodeAt(i) === 0xFF && raw.charCodeAt(i + 1) === 0xE1) {
+        if (raw.substr(i + 4, 6) === 'Exif\x00\x00') {
+          var tiffOff = i + 10;
+          var big = raw.substr(tiffOff, 2) === '\x4D\x4D';
+          var r16 = function (o) { var a = raw.charCodeAt(o), b = raw.charCodeAt(o+1); return big ? (a<<8)+b : (b<<8)+a; };
+          var ifd = r16(tiffOff + 4), n = r16(tiffOff + ifd);
+          for (var j = 0; j < n; j++) {
+            var eo = tiffOff + ifd + 2 + j * 12;
+            if (eo + 12 > raw.length) break;
+            if (r16(eo) === 0x0112) return r16(eo + 8) || 1;
+          }
+        }
+        break;
+      }
+    }
+  } catch (e) {}
+  return 1;
+}
+
+/** 压缩图片文件，返回 Blob 和文件名（兼容微信 X5/旧 WebView） */
+function compressImage(file, maxBytes) {
+  maxBytes = maxBytes || PHOTO_MAX_BYTES;
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var dataUrl = e.target.result;
+      var img = new Image();
+      img.onload = function () {
+        var orient = _getExifOrientation(dataUrl);
+        var rotated = orient >= 5 && orient <= 8;
+        var canvas = document.createElement('canvas');
+        var w = img.width, h = img.height;
+        if (rotated) { var t = w; w = h; h = t; }
+        if (w > COMPRESS_MAX_DIM || h > COMPRESS_MAX_DIM) {
+          var s = COMPRESS_MAX_DIM / Math.max(w, h);
+          w = Math.round(w * s); h = Math.round(h * s);
+        }
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        // EXIF 方向修正
+        if (orient > 1) {
+          _applyOrientation(ctx, w, h, orient);
+          var dw = (orient === 6 || orient === 8) ? img.height : img.width;
+          var dh = (orient === 6 || orient === 8) ? img.width : img.height;
+          ctx.drawImage(img, 0, 0, dw, dh);
+        } else {
+          ctx.drawImage(img, 0, 0, w, h);
+        }
+        // 逐步降低质量直到满足大小
+        _tryQuality(ctx, canvas, w, h, img, 0, maxBytes, file.name, resolve);
+      };
+      img.onerror = function () { reject(new Error('图片加载失败，请重新选择')); };
+      img.src = dataUrl;
+    };
+    reader.onerror = function () { reject(new Error('文件读取失败')); };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** 递归尝试不同质量级别 */
+function _tryQuality(ctx, canvas, w, h, img, idx, maxBytes, origName, resolve) {
+  if (idx < COMPRESS_QUALITY_STEPS.length) {
+    _canvasToBlob(canvas, 'image/jpeg', COMPRESS_QUALITY_STEPS[idx]).then(function (blob) {
+      if (blob.size <= maxBytes) {
+        resolve({ blob: blob, name: _jpegName(origName) });
+      } else {
+        _tryQuality(ctx, canvas, w, h, img, idx + 1, maxBytes, origName, resolve);
+      }
+    });
+  } else {
+    // 所有质量都超限，缩小尺寸到 1280px
+    var sc = document.createElement('canvas');
+    var sw = Math.min(w, 1280), sh = Math.round(h * (1280 / w));
+    sc.width = sw; sc.height = sh;
+    sc.getContext('2d').drawImage(canvas, 0, 0, sw, sh);
+    _canvasToBlob(sc, 'image/jpeg', 0.5).then(function (blob) {
+      resolve({ blob: blob, name: _jpegName(origName) });
+    });
+  }
+}
+
+/** EXIF 方向变换 */
+function _applyOrientation(ctx, w, h, o) {
+  switch (o) {
+    case 2: ctx.transform(-1,0,0,1,w,0); break;
+    case 3: ctx.transform(-1,0,0,-1,w,h); break;
+    case 4: ctx.transform(1,0,0,-1,0,h); break;
+    case 5: ctx.transform(0,1,1,0,0,0); break;
+    case 6: ctx.transform(0,1,-1,0,h,0); break;
+    case 7: ctx.transform(0,-1,-1,0,w,h); break;
+    case 8: ctx.transform(0,-1,1,0,0,w); break;
+  }
+}
+
+function _jpegName(name) {
+  if (!name) return 'photo.jpg';
+  return name.replace(/\.[^.]+$/, '') + '.jpg';
+}
+
 // ---------- 认证图片渲染 ----------
 // 上传目录已改为需 Bearer token 的 /api/uploads，而 <img src> 无法携带请求头，
 // 因此统一改用 fetch 取 blob 再通过 objectURL 渲染。
@@ -388,16 +555,26 @@ const app = createApp({
     },
     onPhoto(e) {
       const f = e.target.files[0]; if (!f) return;
-      this.photoFile = f;
-      const r = new FileReader(); r.onload = (x) => (this.photoData = x.target.result); r.readAsDataURL(f);
+      this.showToast('正在压缩图片…');
+      compressImage(f).then(result => {
+        this.photoFile = blobToFile(result.blob, result.name);
+        const r = new FileReader();
+        r.onload = (x) => { this.photoData = x.target.result; this.showToast('图片已压缩，可以提交'); };
+        r.readAsDataURL(this.photoFile);
+      }).catch(err => { this.showToast(err.message || '图片处理失败'); });
     },
     onProof(e) {
       const f = e.target.files[0]; if (!f) return;
-      this.proofFile = f;
-      const r = new FileReader(); r.onload = (x) => (this.proofData = x.target.result); r.readAsDataURL(f);
+      compressImage(f).then(result => {
+        this.proofFile = blobToFile(result.blob, result.name);
+        const r = new FileReader();
+        r.onload = (x) => { this.proofData = x.target.result; };
+        r.readAsDataURL(this.proofFile);
+      }).catch(err => { this.showToast(err.message || '图片处理失败'); });
     },
     onFaceFile(e) {
       const f = e.target.files[0]; if (!f) return;
+      // 人脸底图不压缩（需要保留原始细节用于人脸识别）
       this.faceFile = f;
       const r = new FileReader(); r.onload = (x) => (this.faceData = x.target.result); r.readAsDataURL(f);
     },
@@ -414,7 +591,7 @@ const app = createApp({
       this.faceBusy = true;
       try {
         const fd = new FormData();
-        fd.append("photo", this.faceFile);
+        fd.append("photo", this.faceFile, (this.faceFile && this.faceFile.name) || 'face.jpg');
         const d = await this.api("/api/face/enroll", { method: "POST", body: fd });
         this.faceEnrolled = true;
         this.faceIdUrl = this.fixUrl(d.face_id_url) || this.faceIdUrl;
@@ -448,8 +625,12 @@ const app = createApp({
       this.submitting = true;
       try {
         const fd = new FormData();
-        fd.append("photo", this.photoFile);
-        if (this.proofFile) fd.append("proof", this.proofFile);
+        var _pName = (this.photoFile && this.photoFile.name) || 'photo.jpg';
+        fd.append("photo", this.photoFile, _pName);
+        if (this.proofFile) {
+          var _fName = (this.proofFile && this.proofFile.name) || 'proof.jpg';
+          fd.append("proof", this.proofFile, _fName);
+        }
         if (this.lat != null) fd.append("location_lat", this.lat);
         if (this.lng != null) fd.append("location_lng", this.lng);
         fd.append("check_type", this.isMakeup ? "makeup" : "normal");
@@ -668,12 +849,16 @@ const app = createApp({
     onChallengePhoto(e) {
       const file = e.target.files[0];
       if (!file) return;
-      this.challengePhotoFile = file;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        this.challengePhotoData = ev.target.result;
-      };
-      reader.readAsDataURL(file);
+      this.showToast('正在压缩图片…');
+      compressImage(file).then(result => {
+        this.challengePhotoFile = blobToFile(result.blob, result.name);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          this.challengePhotoData = ev.target.result;
+          this.showToast('图片已压缩');
+        };
+        reader.readAsDataURL(this.challengePhotoFile);
+      }).catch(err => { this.showToast(err.message || '图片处理失败'); });
     },
 
     async submitChallengeCheckin() {
@@ -686,7 +871,7 @@ const app = createApp({
       try {
         // 先上传附件
         const fd = new FormData();
-        fd.append("file", this.challengePhotoFile);
+        fd.append("file", this.challengePhotoFile, (this.challengePhotoFile && this.challengePhotoFile.name) || 'photo.jpg');
         const uploadResult = await this.api("/api/challenge/upload", {
           method: "POST",
           body: fd
