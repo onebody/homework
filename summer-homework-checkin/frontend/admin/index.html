@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>打卡系统 · 后台管理</title>
   <link rel="stylesheet" href="./admin.css?v=20260808" />
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Vue/Chart.js 本地托管于 /vendor（随镜像打包，无外部 CDN 依赖）；相对路径兼容子路径部署；?v= 为版本号用于缓存刷新 -->
+  <script src="../vendor/vue.global.prod.js?v=3.5.41"></script>
+  <script src="../vendor/chart.umd.min.js?v=4.5.1"></script>
 </head>
 <body>
 <div id="app" v-cloak>

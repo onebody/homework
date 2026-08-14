@@ -10,9 +10,9 @@
 #   summer-homework 学生端  http://localhost:7765/homework/
 #   summer-homework 管理端  http://localhost:7765/homework/admin/
 #   points-system    前端    http://localhost:7765/points/
-# 直连调试入口（绕过 nginx）：
-#   summer-homework  http://localhost:8000/
-#   points-system    http://localhost:8001/
+# 直连调试入口（绕过 nginx，仅 loopback；宿主 8000 已被其他项目占用）：
+#   summer-homework  http://127.0.0.1:8003/
+#   points-system    http://127.0.0.1:8001/
 # 停止：docker compose down   （加 -v 可同时删除数据卷）
 
 services:
@@ -24,14 +24,15 @@ services:
     container_name: summer-homework
     ports:
       # 仅绑定本机：容器间通信走 hanghang-net 内部网络，无需向局域网暴露端口
-      - "127.0.0.1:8000:8000"
+      # （宿主 8000 已被其他项目占用，本地直连调试改用 8003）
+      - "127.0.0.1:8003:8000"
     environment:
       # 数据库与上传目录重定向到持久化卷
       DB_PATH: /data/app.db
       UPLOAD_DIR: /data/uploads
       # 安全配置（生产环境必须通过 .env 文件或环境变量注入强随机密钥）
       SUMMER_SECRET: ${SUMMER_SECRET:?请在 .env 或环境变量中设置 SUMMER_SECRET}
-      ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000,http://localhost:7765,http://127.0.0.1:7765,http://localhost,http://127.0.0.1
+      ALLOWED_ORIGINS: http://localhost:8003,http://127.0.0.1:8003,http://localhost:7765,http://127.0.0.1:7765,http://localhost,http://127.0.0.1
       # 生产环境关闭 /docs、/redoc、/openapi.json（避免公开接口清单与数据结构）
       PRODUCTION: ${PRODUCTION:-1}
       # 初始管理员密码（仅本地测试；未设置则 seed 自动生成随机密码）

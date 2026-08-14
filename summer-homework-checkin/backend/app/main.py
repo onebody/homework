@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 
 from .config import (
-    STUDENT_DIR, ADMIN_DIR,
+    STUDENT_DIR, ADMIN_DIR, VENDOR_DIR,
     ALLOWED_ORIGINS, ALLOWED_METHODS, ALLOWED_HEADERS
 )
 from .database import engine
@@ -71,11 +71,12 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     # 启用 XSS 过滤（兼容旧浏览器）
     response.headers["X-XSS-Protection"] = "1; mode=block"
-    # 内容安全策略：缓解 XSS（限制脚本/样式来源；CDN 依赖与内联样式已显式放行）
+    # 内容安全策略：缓解 XSS。Vue/Chart.js 已本地托管于 /vendor（同源），
+    # 无需放行任何外部 CDN 域名；'unsafe-eval' 为 Vue 运行时编译 DOM 模板所需
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:; "
         "connect-src 'self'; "
         "object-src 'none'; "
@@ -103,6 +104,9 @@ def on_startup():
 
 
 # 上传照片不再公开挂载，改由 routers/uploads.py 的 /api/uploads 认证下载（防人脸照片遍历）
+# 本地托管的第三方库（Vue/Chart.js）：须在 "/" 挂载之前注册，
+# 前端以相对路径 ./vendor/...、../vendor/... 引用，兼容任意子路径部署
+app.mount("/vendor", StaticFiles(directory=VENDOR_DIR), name="vendor")
 # 独立后台管理页
 app.mount("/admin", StaticFiles(directory=ADMIN_DIR, html=True), name="admin")
 # H5 学生端（默认根路径）

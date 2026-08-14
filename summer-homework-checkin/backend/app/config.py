@@ -14,6 +14,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # 前端静态资源目录
 STUDENT_DIR = os.path.join(BASE_DIR, "..", "frontend", "student")
 ADMIN_DIR = os.path.join(BASE_DIR, "..", "frontend", "admin")
+# 本地托管的第三方库（Vue/Chart.js），随镜像打包，免除外部 CDN 依赖
+VENDOR_DIR = os.path.join(BASE_DIR, "..", "frontend", "vendor")
 
 # SQLite 数据库（轻量、零配置、可持久化）
 DB_PATH = os.path.join(BASE_DIR, "app.db")

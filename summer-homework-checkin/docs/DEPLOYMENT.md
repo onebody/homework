@@ -23,10 +23,10 @@
 # 在 hanghang_WS/ 根目录
 docker compose up -d --build
 
-# 访问：
-#   学生端    http://localhost:8000/
-#   管理端    http://localhost:8000/admin/
-#   积分系统  http://localhost:8001/
+# 访问（推荐经 nginx 子路径 http://localhost:7765/homework/）：
+#   学生端    http://127.0.0.1:8003/
+#   管理端    http://127.0.0.1:8003/admin/
+#   积分系统  http://127.0.0.1:8001/
 ```
 
 ### 服务与端口
@@ -85,7 +85,7 @@ location /homework/ {
 }
 ```
 
-> **注意**：前端静态资源须为相对引用（`./app.js`、`./student.css`），Vue 使用国内可访问 CDN（`cdn.bootcdn.net`），避免公网子路径下 404 或 CDN 被墙导致模板未渲染（显示原始 `{{ }}`）。
+> **注意**：前端静态资源须为相对引用（`./app.js`、`./student.css`）。Vue/Chart.js 已本地托管于 `frontend/vendor/`，由后端 `/vendor` 路由同源提供（随镜像打包，**无任何外部 CDN 依赖**），前端以 `./vendor/...`、`../vendor/...` 相对引用，公网/内网/离线环境均可用，避免 CDN 被墙或不稳定导致模板未渲染（显示原始 `{{ }}`）。
 
 ---
 
@@ -158,21 +158,22 @@ ssh user@server 'gunzip -c /tmp/summer.tar.gz | docker load'
 部署后逐项确认（全部应为 200）：
 
 ```bash
-# summer-homework
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/api/health   # 200
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/             # 学生端
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/app.js       # JS
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/student.css  # CSS
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/admin/       # 管理端
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/admin/app.js
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/admin/admin.css
+# summer-homework（本地直连调试端口 8003；正式入口 nginx 7765/homework/）
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/api/health   # 200
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/             # 学生端
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/app.js       # JS
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/student.css  # CSS
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/admin/       # 管理端
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/admin/app.js
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/admin/admin.css
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8003/vendor/vue.global.prod.js  # 本地托管 Vue
 
 # points-system
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/api/health   # 200
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/
 
 # 登录 API
-curl -s -X POST http://localhost:8000/api/auth/login \
+curl -s -X POST http://127.0.0.1:8003/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<密码>"}'
 ```
@@ -188,7 +189,7 @@ curl -s -X POST http://localhost:8000/api/auth/login \
 
 | 现象 | 可能原因 | 处理 |
 | --- | --- | --- |
-| 页面显示原始 `{{ }}` 模板 | Vue CDN 被墙未加载 | 确认使用国内 CDN（bootcdn），检查网络 |
+| 页面显示原始 `{{ }}` 模板 | Vue 未加载（旧版依赖外部 CDN） | 确认部署镜像包含 `frontend/vendor/` 目录，HTML 使用 `./vendor/...` 相对引用；清浏览器缓存后重试 |
 | CSS/JS 404（子路径部署） | 使用了绝对路径引用 | 改为相对路径 `./xxx`，前端 `BASE_PATH` 生效 |
 | `ERR_ADDRESS_UNREACHABLE` | 客户端网络/网段不通 | 服务器侧 curl 全 200 则为客户端问题，换网络/清缓存 |
 | 打卡总被拒绝 | 人脸 enforce 模式 + 无模型 | 联网下载模型，或设 `FACE_MODE_ON_ENROLLED=soft` |

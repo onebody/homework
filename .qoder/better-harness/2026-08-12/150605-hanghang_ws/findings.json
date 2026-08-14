@@ -1,0 +1,240 @@
+{
+  "summary": {
+    "projectName": "hanghang_WS",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 26,
+    "overview": "项目在部署基础设施和安全迭代方面积累了实践经验，但 133 个源文件完全没有自动化测试，所有代码变更均无可观测的验证检查，且缺少项目级 Agent 指令文件来引导上下文路由。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Skills",
+        "Hooks",
+        "MCP",
+        "Plugins",
+        "Memories"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Global"
+          ],
+          "count": 1,
+          "paths": [
+            "~/.qoder/rules/all_rules.md"
+          ]
+        },
+        {
+          "surface": "Skills",
+          "scopes": [
+            "Project",
+            "Global",
+            "Plugin"
+          ],
+          "count": 54,
+          "paths": [
+            ".qoder/skills/fastapi-vue-fullstack-dev/SKILL.md",
+            "~/.agents/skills/browser-skill/SKILL.md",
+            "~/.agents/skills/dws/SKILL.md",
+            "~/.qoder/skills/excalidraw-diagram/SKILL.md",
+            "~/.qoder/skills/fastapi-vue-fullstack-dev/SKILL.md",
+            "~/.agents/skills/find-skills/SKILL.md",
+            "~/.agents/skills/lark-approval/SKILL.md",
+            "~/.agents/skills/lark-apps/SKILL.md",
+            "~/.agents/skills/lark-attendance/SKILL.md",
+            "~/.agents/skills/lark-base/SKILL.md",
+            "~/.agents/skills/lark-calendar/SKILL.md",
+            "~/.agents/skills/lark-contact/SKILL.md"
+          ]
+        },
+        {
+          "surface": "Hooks",
+          "scopes": [
+            "Plugin"
+          ],
+          "count": 2,
+          "paths": [
+            "~/.qoder/plugins/cache/qoder-bundler/security-scan/.qoder-plugin/qoder-hooks.json"
+          ]
+        },
+        {
+          "surface": "MCP",
+          "scopes": [
+            "Plugin"
+          ],
+          "count": 1,
+          "paths": [
+            "~/.qoder/plugins/cache/qoder-marketplace/chrome-devtools-mcp/1.2.0/.mcp.json"
+          ]
+        },
+        {
+          "surface": "Plugins",
+          "scopes": [
+            "Plugin"
+          ],
+          "count": 6,
+          "paths": [
+            "~/.qoder/plugins/cache/qoder-bundler/better-harness/.qoder-plugin/plugin.json",
+            "~/.qoder/plugins/cache/qoder-marketplace/chrome-devtools-mcp/1.2.0/.qoder-plugin/plugin.json",
+            "~/.qoder/plugins/cache/qoder-marketplace/design-review/0.1.0/.qoder-plugin/plugin.json",
+            "~/.qoder/plugins/cache/qoder-bundler/qoder-create-plugin",
+            "~/.qoder/plugins/cache/qoder-bundler/security-scan/.qoder-plugin/plugin.json",
+            "~/.qoder/plugins/cache/qoder-marketplace/redis-development/1.0.0/.qoder-plugin/plugin.json"
+          ]
+        },
+        {
+          "surface": "Memories",
+          "scopes": [
+            "Project",
+            "Global"
+          ],
+          "count": 69
+        },
+        {
+          "surface": "Commands",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        }
+      ],
+      "repositorySourceRows": []
+    },
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 55,
+        "summary": "请求意图被正常处理，但项目缺少 AGENTS.md 等结构化指令文件，代理无法通过项目拥有的路由到达正确的上下文边界和风险路径。",
+        "findingRefs": [
+          "no-project-agent-instructions"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 62,
+        "summary": "Docker、Nginx 和部署脚本提供了可操作的运行时环境，Skills 和 MCP 已配置，但缺乏标准化的启动和诊断入口，跨作用域同名 Skill 可能引起路由歧义。",
+        "findingRefs": [
+          "cross-scope-skill-duplication"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 42,
+        "summary": "133 个源文件对应 0 个测试文件，30 天窗口内 349 个任务片段中无可观测的验证检查行为，唯一的代码变更事件以 changed-without-check 闭合。",
+        "findingRefs": [
+          "zero-test-coverage",
+          "changes-without-verification"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 52,
+        "summary": "部署基础设施存在且有多轮安全迭代经验，但交付缺少真实验收边界的证据，回滚和恢复路径未被验证。",
+        "findingRefs": [
+          "changes-without-verification",
+          "delivery-without-acceptance-evidence"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 38,
+        "summary": "69 条 Memory 已积累但无后续可比结果验证其改善效果，安全提交流程的重复行为暗示可复用知识未被有效路由。",
+        "findingRefs": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "zero-test-coverage",
+      "title": "133 个源文件没有任何自动化测试，代码变更无法获得行为级验证",
+      "severity": "High",
+      "reason": "项目包含 126 个 Python 源文件和 7 个 JavaScript 源文件，测试文件数量为 0。在 30 天窗口内的 349 个任务片段中，withChecks=0 且 withReviewedRelevantCheck=0，表明没有任何可观测的验证检查行为。唯一的代码变更事件（E3，安全清理）以 changed-without-check 闭合。这意味着任何编辑都无法通过自动化手段确认其行为是否正确，代理只能依赖手动检查或 assistant-handoff 来判断完成状态。证据来自 projectHarness（testFiles=0）和 sessionEvidence（withChecks=0）两个独立来源的交叉确认。",
+      "expectedOutput": [
+        "Update the existing Test owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "expectedArtifact": "Test",
+      "aiFixPrompt": "/better-harness fix this issue\n\n为项目核心后端模块添加最小可行的测试覆盖。\n\n## 范围\n\n优先覆盖 summer-homework-checkin/backend 和 points-system/backend 的核心路由和数据库模型。使用 pytest 框架，为每个模块的关键 API 端点编写至少一个正向和一个异常测试用例。\n\n## 验证\n\n- 运行 `cd summer-homework-checkin/backend && python -m pytest tests/ -v` 确认测试可执行\n- 运行 `cd points-system/backend && python -m pytest tests/ -v` 确认测试可执行\n- 确认测试覆盖了至少一个数据创建和一个数据查询路径",
+      "dimensionRefs": [
+        "change-validation"
+      ]
+    },
+    {
+      "id": "no-project-agent-instructions",
+      "title": "缺少项目级 Agent 指令文件，代理无法获得结构化的上下文路由",
+      "severity": "Medium",
+      "reason": "项目包含 133 个源文件分布在 4 个源根（homework-monorepo、summer-homework-checkin、points-system、upload_to_github.js），但没有 AGENTS.md 或等效的项目级指令文件。projectHarness 证据显示 agentInstructions.status=missing，coreCodeRules.status=missing。代理在处理任务时无法通过项目拥有的路由到达正确的架构所有者、边界定义和风险路径。虽然全局 Rules 存在（1 条），但它不包含项目特定的上下文。证据来自 projectHarness 的 agentInstructions 和 coreCodeRules 检查。",
+      "expectedOutput": [
+        "Update the existing Document owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "expectedArtifact": "Document",
+      "aiFixPrompt": "/better-harness fix this issue\n\n在项目根目录创建 AGENTS.md，为代理提供结构化的上下文路由。\n\n## 内容要求\n\n包含以下部分：\n1. 项目概述和模块边界（homework-monorepo、summer-homework-checkin、points-system 的职责划分）\n2. 核心架构路径（FastAPI 后端、Vue3 CDN 前端、SQLite/Alembic 数据库）\n3. 启动和诊断命令（docker-compose up、本地开发入口）\n4. 变更影响路由（哪些修改需要关注哪些模块）\n5. 安全和部署约束\n\n## 验证\n\n- 确认 AGENTS.md 存在于项目根目录\n- 确认文件包含至少 3 个模块的边界描述\n- 确认包含可执行的启动命令",
+      "dimensionRefs": [
+        "task-understanding"
+      ]
+    },
+    {
+      "id": "changes-without-verification",
+      "title": "代码变更在无可观测验证的情况下进入提交和部署链路",
+      "severity": "Medium",
+      "reason": "Session Evidence 显示 E3（安全清理，1 edit/1 file）以 changed-without-check 闭合，E4 紧随其后再次尝试安全提交，表明首次变更后的信任不足。E1（开发-测试-部署链路，57 tool calls）的 closure 为 no-change-observed，验证结果不可裁决。整个窗口的 populationCoverage.withChecks=0，observationCoverage.withChecks=0。这意味着变更在缺乏自动化验证的情况下直接进入提交和部署阶段，代理只能依赖 assistant-handoff 作为完成信号。证据来自 sessionEvidence 的 E3 和 E1 候选事件。",
+      "expectedOutput": [
+        "Update the existing Script owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "expectedArtifact": "Script",
+      "aiFixPrompt": "/better-harness fix this issue\n\n为变更提交流程添加最小验证门。\n\n## 范围\n\n在 deploy.sh 或 CI 流程中添加一个预提交检查步骤，确保：\n1. 后端代码变更触发至少一个 smoke test\n2. 敏感信息扫描（如 .env 文件中的密钥）在提交前执行\n3. 验证结果被记录并可追溯\n\n## 验证\n\n- 修改一个后端文件，确认预提交检查被触发\n- 确认检查结果在终端输出中可见\n- 确认包含敏感信息的文件无法通过检查",
+      "dimensionRefs": [
+        "change-validation",
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "delivery-without-acceptance-evidence",
+      "title": "部署交付缺少真实验收边界的证据",
+      "severity": "Low",
+      "reason": "Session Evidence 中所有 5 个候选事件均以 assistant-handoff 作为验收信号，没有到达真实的外部验收边界（如 CI merge、production deploy record）。E1 的部署链路（本地→测试→生产）虽有完整的工作轨迹（execute→inspect→execute→change→execute→handoff），但最终仍交还给助手而非外部验收系统。reliable-delivery 的 acceptance-evidence 检查处于 Unobserved 状态。证据来自 sessionEvidence 的 acceptanceSignals 和 result 字段。",
+      "expectedOutput": [
+        "Update the existing Runbook owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "expectedArtifact": "Runbook",
+      "aiFixPrompt": "/better-harness fix this issue\n\n为部署流程添加可观测的验收证据。\n\n## 范围\n\n在部署脚本或流程中添加一个部署后验证步骤：\n1. 部署完成后自动执行一个 HTTP 健康检查\n2. 记录部署结果（成功/失败）和时间戳\n3. 将验收证据保存在可追溯的位置\n\n## 验证\n\n- 执行一次部署，确认健康检查被执行\n- 确认部署结果被记录\n- 确认验收证据可被后续审查",
+      "dimensionRefs": [
+        "reliable-delivery"
+      ]
+    },
+    {
+      "id": "cross-scope-skill-duplication",
+      "title": "同名 Skill 跨 Project 和 User 作用域存在，可能引起路由歧义",
+      "severity": "Low",
+      "reason": "Agent Customize 证据显示 fastapi-vue-fullstack-dev 同时存在于 Project 作用域（所有者 onebody/homework）和 User 作用域（所有者 User），两个版本的 ownerRoute 不同。这可能导致代理在触发该 Skill 时面临选择歧义——不确定应使用项目特定版本还是全局版本。lint 未发现精确冲突，但跨作用域同名是一个治理线索。证据来自 agentCustomize 的 ownerRoutes 和 inventory 数据。",
+      "expectedOutput": [
+        "Update the existing Skill owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "expectedArtifact": "Skill",
+      "aiFixPrompt": "/better-harness fix this issue\n\n审查并统一 fastapi-vue-fullstack-dev Skill 的跨作用域版本。\n\n## 范围\n\n1. 比较项目作用域和用户作用域的 fastapi-vue-fullstack-dev SKILL.md 内容差异\n2. 确定哪个版本是当前项目需要的\n3. 如果项目版本是定制的，考虑移除用户版本以避免歧义；如果内容相同，保留一个即可\n\n## 验证\n\n- 确认只保留一个作用域的 fastapi-vue-fullstack-dev Skill\n- 确认保留的版本包含项目特定的开发流程指导",
+      "dimensionRefs": [
+        "controlled-execution"
+      ]
+    }
+  ]
+}

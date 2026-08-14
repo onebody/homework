@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>暑假作业打卡平台</title>
   <link rel="stylesheet" href="./student.css?v=20260808" />
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
+  <!-- Vue 本地托管于 /vendor（随镜像打包，无外部 CDN 依赖）；相对路径兼容子路径部署；?v= 为版本号用于缓存刷新 -->
+  <script src="./vendor/vue.global.prod.js?v=3.5.41"></script>
 </head>
 <body>
 <div id="app" v-cloak>

@@ -70,11 +70,11 @@ deploy_local() {
     log_info "等待本地服务就绪..."
     LOCAL_OK=false
     for _ in $(seq 1 40); do
-        if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then LOCAL_OK=true; break; fi
+        if curl -sf http://127.0.0.1:8003/api/health > /dev/null 2>&1; then LOCAL_OK=true; break; fi
         sleep 3
     done
     if [[ "$LOCAL_OK" == "true" ]]; then
-        log_info "本地服务验证通过: http://localhost:8000/api/health"
+        log_info "本地服务验证通过: http://127.0.0.1:8003/api/health"
     else
         log_error "本地服务验证失败，请检查日志: docker logs summer-homework"
         exit 1

@@ -29,6 +29,7 @@ __pycache__/
 logs/
 tmp/
 *.tmp
+.tmp_*
 .cache/
 node_modules/
 venv/
