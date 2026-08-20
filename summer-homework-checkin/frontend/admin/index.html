@@ -39,6 +39,7 @@
         <div class="tab-redeems" :class="{on:view==='redeems'}" @click="loadRedeems(1)">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
         <div :class="{on:view==='checkins'}" @click="view='checkins'; loadCheckins(1)">📸 打卡记录</div>
         <div :class="{on:view==='challenges'}" @click="view='challenges'; loadChallengeTasks()">🏆 闯关任务 <span class="nav-badge" v-if="challengePendingCount>0">{{ challengePendingCount }}</span></div>
+        <div :class="{on:view==='pets'}" @click="openPets">🐾 宠物管理</div>
         <div :class="{on:view==='push'}" @click="openPush">🔔 推送配置</div>
         <div :class="{on:view==='site'}" @click="openSite">⚙️ 系统设置</div>
         <div :class="{on:view==='password'}" @click="view='password'; showPwdForm=false; passwordForm={old_password:'',new_password:'',confirm_password:''}">🔑 修改密码</div>
@@ -525,6 +526,264 @@
         </div>
       </section>
 
+      <!-- 宠物管理 -->
+      <section v-if="view==='pets'">
+        <div class="bar">
+          <h2>🐾 宠物管理</h2>
+        </div>
+
+        <!-- 领养总览 -->
+        <div class="dash-grid" v-if="petOverview" style="margin-bottom:16px">
+          <div class="dash-card blue"><div class="dash-icon">🎒</div><div class="dash-body"><div class="dash-v">{{ petOverview.total_students }}</div><div class="dash-k">总学生数</div></div></div>
+          <div class="dash-card green"><div class="dash-icon">🐾</div><div class="dash-body"><div class="dash-v">{{ petOverview.adopted_count }}</div><div class="dash-k">已领养</div></div></div>
+          <div class="dash-card orange"><div class="dash-icon">🥚</div><div class="dash-body"><div class="dash-v">{{ petOverview.not_adopted_count }}</div><div class="dash-k">未领养</div></div></div>
+          <div class="dash-card teal"><div class="dash-icon">📊</div><div class="dash-body"><div class="dash-v">{{ petOverview.total_ever_adopted }}</div><div class="dash-k">历史总领养</div></div></div>
+        </div>
+
+        <!-- 阶段分布 -->
+        <div class="card" v-if="petOverview && petOverview.stage_distribution" style="margin-bottom:16px">
+          <h3>📊 阶段分布</h3>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div v-for="(cnt, stage) in petOverview.stage_distribution" :key="stage" style="text-align:center;padding:8px 16px;background:#f3faff;border-radius:12px">
+              <div style="font-size:24px">{{ {baby:'🐣',youth:'🐥',adult:'🐔',legend:'🦄'}[stage] }}</div>
+              <div style="font-weight:700;font-size:18px">{{ cnt }}</div>
+              <div class="muted" style="font-size:12px">{{ petStageLabel(stage) }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 领养列表 -->
+        <div class="bar">
+          <h3>📋 领养列表</h3>
+          <div style="flex:1"></div>
+          <input v-model="petSearch" placeholder="搜索用户名/昵称" style="width:160px;padding:6px 10px;border:1px solid #dbe6f2;border-radius:8px;font-size:13px" @keydown.enter="searchPets" />
+          <button class="mini" @click="searchPets">搜索</button>
+        </div>
+
+        <table class="challenge-table">
+          <thead><tr><th>ID</th><th>学生</th><th>宠物昵称</th><th>种类</th><th>阶段</th><th>XP</th><th>领养时间</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="a in petAdoptions" :key="a.id">
+              <td>{{ a.id }}</td>
+              <td>{{ a.nickname }}<br><small class="muted">{{ a.username }}</small></td>
+              <td>{{ a.pet_nickname }}</td>
+              <td>{{ a.emoji }} {{ a.species_name }}</td>
+              <td>{{ petStageLabel(a.current_stage) }}</td>
+              <td><b>{{ a.current_xp }}</b></td>
+              <td><small>{{ a.adopted_at ? a.adopted_at.slice(0,10) : '-' }}</small></td>
+              <td><span :class="['badge', a.is_active?'on':'off']">{{ a.is_active?'活跃':'已放弃' }}</span></td>
+              <td>
+                <button class="mini" @click="viewPetFeedLogs(a)">流水</button>
+                <button class="mini" @click="openPetAdjust(a)">调整</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 手机端卡片 -->
+        <div class="challenge-cards">
+          <div class="data-card" v-for="a in petAdoptions" :key="'m'+a.id">
+            <div class="dc-head">
+              <span class="dc-title">{{ a.emoji }} {{ a.pet_nickname }}</span>
+              <span :class="['badge', a.is_active?'on':'off']">{{ a.is_active?'活跃':'已放弃' }}</span>
+            </div>
+            <div class="dc-grid">
+              <div><span class="dc-k">学生</span><span class="dc-v">{{ a.nickname }}</span></div>
+              <div><span class="dc-k">种类</span><span class="dc-v">{{ a.species_name }}</span></div>
+              <div><span class="dc-k">阶段</span><span class="dc-v">{{ petStageLabel(a.current_stage) }}</span></div>
+              <div><span class="dc-k">XP</span><span class="dc-v"><b>{{ a.current_xp }}</b></span></div>
+            </div>
+            <div class="dc-actions">
+              <button class="mini" @click="viewPetFeedLogs(a)">流水</button>
+              <button class="mini" @click="openPetAdjust(a)">调整</button>
+            </div>
+          </div>
+        </div>
+
+        <pager :page="pg.petAdoptions.page" :pages="pg.petAdoptions.pages" :total="pg.petAdoptions.total" @go="loadPetAdoptions"></pager>
+
+        <!-- 成长流水 -->
+        <div class="bar" v-if="petFeedLogs.length" style="margin-top:16px">
+          <h3>📜 成长流水</h3>
+          <button class="mini ghost" @click="petFeedLogs=[]">关闭</button>
+        </div>
+        <table class="checkin-table" v-if="petFeedLogs.length">
+          <thead><tr><th>时间</th><th>学生</th><th>宠物</th><th>类型</th><th>XP</th><th>累计</th><th>阶段变化</th></tr></thead>
+          <tbody>
+            <tr v-for="l in petFeedLogs" :key="l.id">
+              <td><small>{{ l.created_at ? l.created_at.slice(0,16).replace('T',' ') : '' }}</small></td>
+              <td>{{ l.nickname }}<br><small class="muted">{{ l.username }}</small></td>
+              <td>{{ l.pet_nickname }}</td>
+              <td>{{ petFeedTypeLabel(l.feed_type) }}</td>
+              <td :style="{color: l.xp_gained>0?'#27ae60':'#e67e22'}">{{ l.xp_gained>0?'+':'' }}{{ l.xp_gained }}</td>
+              <td>{{ l.total_xp_after }}</td>
+              <td>
+                <span v-if="l.stage_changed" style="color:#2f80ed;font-weight:600">{{ petStageLabel(l.stage_before) }} → {{ petStageLabel(l.stage_after) }}</span>
+                <span class="muted" v-else>-</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <pager v-if="petFeedLogs.length" :page="pg.petFeedLogs.page" :pages="pg.petFeedLogs.pages" :total="pg.petFeedLogs.total" @go="p => loadPetFeedLogs(p)"></pager>
+
+        <!-- 种类配置 -->
+        <div class="bar" style="margin-top:16px">
+          <h3>🐾 宠物种类配置 <small class="muted">（共 {{ petSpecies.length }} 种）</small></h3>
+          <div style="flex:1"></div>
+          <input v-model="petSpeciesSearch" placeholder="搜索种类名称" style="width:140px;padding:6px 10px;border:1px solid #dbe6f2;border-radius:8px;font-size:13px" />
+          <button class="primary" @click="openSpeciesAdd">+ 新增种类</button>
+        </div>
+
+        <!-- 桌面端表格 -->
+        <table class="prize-table" v-if="filteredPetSpecies.length">
+          <thead><tr><th>ID</th><th>名称</th><th>描述</th><th>幼年</th><th>少年</th><th>成年</th><th>传奇</th><th>排序</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="s in filteredPetSpecies" :key="s.id">
+              <td>{{ s.id }}</td>
+              <td><b>{{ s.name }}</b></td>
+              <td><small class="muted">{{ s.description }}</small></td>
+              <td>{{ s.emoji_baby }}</td>
+              <td>{{ s.emoji_youth }}</td>
+              <td>{{ s.emoji_adult }}</td>
+              <td>{{ s.emoji_legend }}</td>
+              <td>{{ s.sort_order }}</td>
+              <td><span :class="['badge', s.status]">{{ s.status==='on'?'可领养':'不可领养' }}</span></td>
+              <td>
+                <button class="mini" @click="openSpeciesEdit(s)">编辑</button>
+                <button class="mini" :style="{color: s.status==='on'?'#e67e22':'#27ae60'}" @click="toggleSpeciesStatus(s)">{{ s.status==='on'?'停养':'开放' }}</button>
+                <button class="mini danger" @click="deleteSpecies(s)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 移动端卡片 -->
+        <div class="prize-cards" v-if="filteredPetSpecies.length">
+          <div class="data-card" v-for="s in filteredPetSpecies" :key="'m'+s.id">
+            <div class="dc-head">
+              <span class="dc-title">{{ s.emoji_baby }} {{ s.name }}</span>
+              <span :class="['badge', s.status]">{{ s.status==='on'?'可领养':'不可领养' }}</span>
+            </div>
+            <div class="dc-desc" v-if="s.description">{{ s.description }}</div>
+            <div class="dc-grid">
+              <div><span class="dc-k">幼年</span><span class="dc-v">{{ s.emoji_baby }}</span></div>
+              <div><span class="dc-k">少年</span><span class="dc-v">{{ s.emoji_youth }}</span></div>
+              <div><span class="dc-k">成年</span><span class="dc-v">{{ s.emoji_adult }}</span></div>
+              <div><span class="dc-k">传奇</span><span class="dc-v">{{ s.emoji_legend }}</span></div>
+              <div><span class="dc-k">排序</span><span class="dc-v">{{ s.sort_order }}</span></div>
+            </div>
+            <div class="dc-actions">
+              <button class="mini" @click="openSpeciesEdit(s)">编辑</button>
+              <button class="mini" :style="{color: s.status==='on'?'#e67e22':'#27ae60'}" @click="toggleSpeciesStatus(s)">{{ s.status==='on'?'停养':'开放' }}</button>
+              <button class="mini danger" @click="deleteSpecies(s)">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="muted" v-if="!filteredPetSpecies.length" style="text-align:center;padding:16px">暂无宠物种类数据</p>
+
+        <!-- 食物管理 -->
+        <div class="bar" style="margin-top:16px">
+          <h3>🍖 宠物食物管理 <small class="muted">（共 {{ petFoods.length }} 种）</small></h3>
+          <div style="flex:1"></div>
+          <button class="primary" @click="openFoodAdd">+ 新增食物</button>
+          <button class="ghost" @click="loadFeedStats">📊 喂养统计</button>
+        </div>
+
+        <!-- 喂养统计卡片 -->
+        <div class="push-card" v-if="feedStats" style="margin-bottom:12px">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+            <div><span class="dc-k">统计窗口</span><span class="dc-v">近 {{ feedStats.days }} 天</span></div>
+            <div><span class="dc-k">喂养次数</span><span class="dc-v">{{ feedStats.total_feeds }} 次</span></div>
+            <div><span class="dc-k">发放 XP</span><span class="dc-v">{{ feedStats.total_xp }}</span></div>
+            <div><span class="dc-k">积分消耗</span><span class="dc-v">{{ feedStats.total_points }} ⭐</span></div>
+          </div>
+          <div v-if="feedStats.by_food && feedStats.by_food.length" style="margin-top:8px">
+            <small class="muted">按食物统计：</small>
+            <span v-for="f in feedStats.by_food" :key="f.name" style="margin:0 6px;font-size:12px">
+              {{ f.emoji }}{{ f.name }}: {{ f.count }}次/{{ f.total_xp }}XP/{{ f.total_cost }}积分
+            </span>
+          </div>
+        </div>
+
+        <table class="prize-table" v-if="petFoods.length">
+          <thead><tr><th>ID</th><th>图标</th><th>名称</th><th>描述</th><th>积分</th><th>XP</th><th>适用种类</th><th>排序</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="f in petFoods" :key="f.id">
+              <td>{{ f.id }}</td>
+              <td style="font-size:24px">{{ f.emoji }}</td>
+              <td><b>{{ f.name }}</b></td>
+              <td><small class="muted">{{ f.description }}</small></td>
+              <td>⭐{{ f.price }}</td>
+              <td style="color:#27ae60">+{{ f.xp_value }}</td>
+              <td>{{ f.species_name || '通用' }}</td>
+              <td>{{ f.sort_order }}</td>
+              <td><span :class="['badge', f.status]">{{ f.status==='on'?'在售':'下架' }}</span></td>
+              <td>
+                <button class="mini" @click="openFoodEdit(f)">编辑</button>
+                <button class="mini" :style="{color: f.status==='on'?'#e67e22':'#27ae60'}" @click="toggleFoodStatus(f)">{{ f.status==='on'?'下架':'上架' }}</button>
+                <button class="mini danger" @click="deleteFood(f)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted" v-if="!petFoods.length" style="text-align:center;padding:16px">暂无食物数据</p>
+
+        <!-- 适配性矩阵 -->
+        <div class="bar" style="margin-top:16px">
+          <h3>🍽️ 食物适配性矩阵</h3>
+          <div style="flex:1"></div>
+          <button class="ghost" @click="loadSuitabilityMatrix">🔄 刷新矩阵</button>
+        </div>
+        <div v-if="suitabilityMatrix" style="overflow-x:auto;margin-bottom:16px">
+          <table class="suit-matrix-table">
+            <thead>
+              <tr>
+                <th>宠物种类 \ 食物</th>
+                <th v-for="food in suitabilityMatrix.foods" :key="food.id">{{ food.emoji }}{{ food.name }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in suitabilityMatrix.matrix" :key="row.species_id">
+                <td><b>{{ row.species_name }}</b> <small class="muted">({{ row.diet_type }})</small></td>
+                <td v-for="cell in row.cells" :key="cell.food_id" :class="suitCellClass(cell.level)" :title="cell.label">
+                  {{ cell.emoji }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="margin-top:8px;font-size:12px;color:#7a8aa0">
+            ✅ 完美适配 · 👍 适合 · ⚠️ 注意 · ❗ 警告 · 🚫 不适合
+          </div>
+        </div>
+        <p class="muted" v-else style="text-align:center;padding:8px">点击「刷新矩阵」加载适配性数据</p>
+
+        <!-- 生病/治愈记录 -->
+        <div class="bar" style="margin-top:16px">
+          <h3>🤒 异常喂养记录 <small class="muted">（近 30 天）</small></h3>
+          <div style="flex:1"></div>
+          <button class="ghost" @click="loadSickRecords">🔄 刷新记录</button>
+        </div>
+        <table class="prize-table" v-if="sickRecords.length">
+          <thead><tr><th>时间</th><th>学生</th><th>宠物</th><th>适配结果</th><th>XP</th><th>积分</th></tr></thead>
+          <tbody>
+            <tr v-for="r in sickRecords" :key="r.id">
+              <td>{{ r.created_at ? r.created_at.slice(0,16).replace('T',' ') : '' }}</td>
+              <td>{{ r.username }}</td>
+              <td>{{ r.pet_name }}</td>
+              <td>
+                <span :class="['suit-tag', 'suit-tag-' + r.suitability]">
+                  {{ r.suitability === 'warning' ? '❗ 警告' : '⚠️ 注意' }}
+                </span>
+              </td>
+              <td>+{{ r.xp_gained }}</td>
+              <td>⭐{{ r.points_cost }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted" v-else style="text-align:center;padding:8px">暂无异常记录</p>
+      </section>
+
       <!-- 系统设置 -->
       <section v-if="view==='site'">
         <h2>⚙️ 系统设置</h2>
@@ -787,6 +1046,69 @@
         <button :class="reviewingChallenge.action==='approve' ? 'primary' : 'danger-btn'" @click="submitChallengeReview">
           {{ reviewingChallenge.action==='approve' ? '确认通过' : '确认拒绝' }}
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 宠物数据调整弹窗 ==================== -->
+  <div class="modal" v-if="petAdjustForm" @click.self="petAdjustForm=null">
+    <div class="modal-card">
+      <h3>⚙️ 调整宠物数据</h3>
+      <label>XP 增减（正数增加，负数减少）
+        <input type="number" v-model.number="petAdjustForm.xp_delta" placeholder="例如：10 或 -5" />
+      </label>
+      <label>强制设定阶段（留空则自动计算）
+        <select v-model="petAdjustForm.set_stage">
+          <option value="">自动计算</option>
+          <option value="baby">幼年期</option>
+          <option value="youth">少年期</option>
+          <option value="adult">成年期</option>
+          <option value="legend">传奇期</option>
+        </select>
+      </label>
+      <p class="muted">调整将写入成长流水，可在流水记录中审计。</p>
+      <div class="modal-actions">
+        <button class="ghost" @click="petAdjustForm=null">取消</button>
+        <button class="primary" @click="doPetAdjust">确认调整</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 宠物种类编辑弹窗 ==================== -->
+  <div class="modal" v-if="petSpeciesEditing" @click.self="petSpeciesEditing=null">
+    <div class="modal-card">
+      <h3>{{ petSpeciesEditing.id ? '编辑宠物种类' : '新增宠物种类' }}</h3>
+      <label>名称 <input v-model="petSpeciesEditing.name" placeholder="例如：仓鼠、独角兽" /></label>
+      <label>描述/背景故事 <textarea v-model="petSpeciesEditing.description" placeholder="描述这个宠物种类的故事背景..." rows="2"></textarea></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label>幼年 emoji <input v-model="petSpeciesEditing.emoji_baby" placeholder="🐣" /></label>
+        <label>少年 emoji <input v-model="petSpeciesEditing.emoji_youth" placeholder="🐥" /></label>
+        <label>成年 emoji <input v-model="petSpeciesEditing.emoji_adult" placeholder="🐔" /></label>
+        <label>传奇 emoji <input v-model="petSpeciesEditing.emoji_legend" placeholder="🦄" /></label>
+      </div>
+      <label>排序权重 <input type="number" v-model.number="petSpeciesEditing.sort_order" min="0" placeholder="数字越小越靠前" /></label>
+      <div class="modal-actions">
+        <button class="ghost" @click="petSpeciesEditing=null">取消</button>
+        <button class="primary" @click="saveSpecies">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 宠物食物编辑弹窗 ==================== -->
+  <div class="modal" v-if="petFoodEditing" @click.self="petFoodEditing=null">
+    <div class="modal-card">
+      <h3>{{ petFoodEditing.id ? '编辑宠物食物' : '新增宠物食物' }}</h3>
+      <label>名称 <input v-model="petFoodEditing.name" placeholder="例如：小鱼干、鸡腿" /></label>
+      <label>描述 <input v-model="petFoodEditing.description" placeholder="食物描述/效果说明" /></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <label>图标 emoji <input v-model="petFoodEditing.emoji" placeholder="🍎" /></label>
+        <label>积分价格 <input type="number" v-model.number="petFoodEditing.price" min="1" /></label>
+        <label>经验值 XP <input type="number" v-model.number="petFoodEditing.xp_value" min="1" /></label>
+      </div>
+      <label>排序权重 <input type="number" v-model.number="petFoodEditing.sort_order" min="0" placeholder="数字越小越靠前" /></label>
+      <div class="modal-actions">
+        <button class="ghost" @click="petFoodEditing=null">取消</button>
+        <button class="primary" @click="saveFood">保存</button>
       </div>
     </div>
   </div>

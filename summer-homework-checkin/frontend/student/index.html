@@ -300,7 +300,199 @@
       <button class="ghost" @click="logout">退出登录</button>
     </section>
 
-    <!-- 🎰 抽奖 -->
+    <!-- 🐾 宠物乐园 -->
+    <section class="page" v-if="view==='pet'">
+      <!-- 无宠物：领养页 -->
+      <div v-if="!pet.has_pet">
+        <div class="card center">
+          <div style="font-size:64px">🥚</div>
+          <h2>宠物乐园</h2>
+          <p class="muted">领养一只宠物，陪你一起成长！<br>每次打卡审核通过后，宠物会自动获得成长经验。</p>
+        </div>
+        <div class="card">
+          <h3>🐾 选择宠物领养 <small class="muted">共 {{ petAdoptPaged.total }} 种</small></h3>
+          <div class="adopt-grid">
+            <div class="adopt-card" v-for="s in petAdoptPaged.items" :key="s.id"
+                 :class="{selected: petAdoptForm.species_id === s.id}"
+                 @click="petAdoptForm.species_id = s.id">
+              <div class="ac-emoji">{{ s.emoji_baby }}</div>
+              <div class="ac-name">{{ s.name }}</div>
+              <div class="ac-desc">{{ s.description }}</div>
+              <div class="ac-stages">
+                <span>{{ s.emoji_baby }}幼</span>
+                <span>{{ s.emoji_youth }}少</span>
+                <span>{{ s.emoji_adult }}成</span>
+                <span>{{ s.emoji_legend }}传</span>
+              </div>
+            </div>
+          </div>
+          <p class="muted" v-if="!petAdoptPaged.items.length">暂无可领养的宠物</p>
+          <pager :page="petAdoptPaged.page" :pages="petAdoptPaged.pages" :total="petAdoptPaged.total" @go="loadPetAdoptPaged" v-if="petAdoptPaged.items.length"></pager>
+          <label v-if="petAdoptPaged.items.length">给宠物起个昵称（可选）
+            <input v-model="petAdoptForm.nickname" placeholder="默认使用种类名称" maxlength="32" />
+          </label>
+          <button class="primary big" :disabled="petBusy || !petAdoptPaged.items.length" @click="doAdopt">
+            {{ petBusy ? '领养中…' : '🐾 确认领养' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 有宠物：展示页 -->
+      <div v-else>
+        <!-- 宠物卡片 -->
+        <div class="card center pet-hero">
+          <div class="pet-emoji-big" v-if="!pet.pet.sick">{{ pet.pet.emoji }}</div>
+          <div class="pet-emoji-big sick-pet" v-else>🤒</div>
+          <h2>{{ pet.pet.nickname }}</h2>
+          <p class="muted">
+            {{ pet.pet.species_name }} · {{ pet.pet.stage_label }}
+            <span v-if="pet.pet.diet_label" class="diet-badge">· 🍽️ {{ pet.pet.diet_label }}</span>
+          </p>
+          <!-- 生病状态提示 -->
+          <div class="sick-banner" v-if="pet.pet.sick">
+            <span>🤒 {{ pet.pet.nickname }} 不太舒服，需要休息 {{ sickRemainingText() }}</span>
+          </div>
+          <div class="pet-xp-bar-wrap">
+            <div class="pet-xp-bar" :style="{width: petXpPercent() + '%'}"></div>
+          </div>
+          <div class="pet-xp-info">
+            <span>⭐ {{ pet.pet.current_xp }} XP</span>
+            <span v-if="pet.pet.perfect_streak >= 3" class="streak-badge">🔥 连击 ×{{ pet.pet.perfect_streak }}</span>
+            <span v-if="pet.pet.next_stage_label">
+              距{{ pet.pet.next_stage_label }}还需 {{ pet.pet.xp_to_next }} XP
+            </span>
+            <span v-else>已达传奇形态 🎉</span>
+          </div>
+          <div class="pet-stages-row">
+            <div class="pet-stage-dot" v-for="st in ['baby','youth','adult','legend']" :key="st"
+                 :class="{active: st === pet.pet.current_stage}">
+              <span class="psd-emoji">{{ petStageEmoji(st) }}</span>
+              <span class="psd-label">{{ petStageLabel(st) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 宠物详情信息 -->
+        <div class="card">
+          <h3>📋 宠物详情</h3>
+          <div class="pet-detail-grid">
+            <div><span class="pd-k">种类</span><span class="pd-v">{{ pet.pet.species_name }}</span></div>
+            <div><span class="pd-k">昵称</span><span class="pd-v">{{ pet.pet.nickname }}</span></div>
+            <div><span class="pd-k">阶段</span><span class="pd-v">{{ pet.pet.emoji }} {{ pet.pet.stage_label }}</span></div>
+            <div><span class="pd-k">累计经验</span><span class="pd-v">{{ pet.pet.current_xp }} XP</span></div>
+            <div><span class="pd-k">饮食类型</span><span class="pd-v">🍽️ {{ pet.pet.diet_label || '杂食动物' }}</span></div>
+            <div><span class="pd-k">完美连击</span><span class="pd-v">🔥 {{ pet.pet.perfect_streak || 0 }} 次</span></div>
+            <div><span class="pd-k">领养时间</span><span class="pd-v">{{ pet.pet.adopted_at ? pet.pet.adopted_at.slice(0,10) : '-' }}</span></div>
+            <div><span class="pd-k">最近成长</span><span class="pd-v">{{ pet.pet.last_fed_at ? pet.pet.last_fed_at.slice(0,16).replace('T',' ') : '-' }}</span></div>
+          </div>
+        </div>
+
+        <!-- 子 tab 切换 -->
+        <div class="pet-subtabs">
+          <button :class="{on: petSubTab==='log'}" @click="petSubTab='log'; loadPetFeedLog(1)">📜 成长记录</button>
+          <button :class="{on: petSubTab==='feed'}" @click="petSubTab='feed'; loadPetFoods()">🍖 道具喂养</button>
+          <button :class="{on: petSubTab==='species'}" @click="petSubTab='species'; loadPetSpeciesPaged(1)">📖 形态图鉴</button>
+          <button :class="{on: petSubTab==='manage'}" @click="petSubTab='manage'">⚙️ 宠物管理</button>
+        </div>
+
+        <!-- 成长记录 -->
+        <div class="card" v-show="petSubTab==='log'">
+          <h3>📜 成长记录</h3>
+          <div class="rec" v-for="log in petFeedLog" :key="log.id">
+            <span>{{ feedTypeLabel(log.feed_type) }} +{{ log.xp_gained }} XP</span>
+            <span class="review-tag" :class="log.stage_changed ? 'review-approved' : ''">
+              {{ log.stage_changed ? ('升级 ' + petStageLabel(log.stage_after)) : ('累计 ' + log.total_xp_after + ' XP') }}
+            </span>
+            <small>{{ log.created_at ? log.created_at.slice(0,16).replace('T',' ') : '' }}</small>
+          </div>
+          <p class="muted" v-if="!petFeedLog.length">暂无成长记录，快去打卡吧！</p>
+          <pager :page="petFeedPg.page" :pages="petFeedPg.pages" :total="petFeedPg.total" @go="loadPetFeedLog"></pager>
+        </div>
+
+        <!-- 道具喂养 -->
+        <div class="card" v-show="petSubTab==='feed'">
+          <h3>🍖 道具喂养 <small class="muted">当前积分: ⭐ {{ points }}</small></h3>
+          <p class="muted" style="margin-bottom:12px">
+            使用积分购买食物，为宠物补充额外经验值
+            <span v-if="pet.has_pet && pet.pet.diet_label"> · {{ pet.pet.species_name }}是{{ pet.pet.diet_label }}，请选择合适的食物</span>
+          </p>
+          <!-- 生病时禁止喂养提示 -->
+          <div class="sick-block-banner" v-if="pet.has_pet && pet.pet.sick">
+            🤒 {{ pet.pet.nickname }} 正在休息中，需要等待 {{ sickRemainingText() }} 后才能喂养
+          </div>
+          <div class="food-grid">
+            <div class="food-card" v-for="f in petFoods" :key="f.id" :class="{'food-disabled': isDangerFood(f)}">
+              <div class="fc-suit-badge" :class="suitClass(f)" :title="f.suitability ? f.suitability.note : ''">
+                {{ suitEmoji(f) }} <span>{{ suitLabel(f) }}</span>
+              </div>
+              <div class="fc-emoji">{{ f.emoji }}</div>
+              <div class="fc-name">{{ f.name }}</div>
+              <div class="fc-info">
+                <span class="fc-xp">+{{ f.xp_value }} XP</span>
+                <span class="fc-price">⭐{{ f.price }}</span>
+              </div>
+              <div class="fc-desc" v-if="f.description">{{ f.description }}</div>
+              <div class="fc-species" v-if="f.species_name">适用: {{ f.species_name }}</div>
+              <div class="fc-qty-row">
+                <div class="qty-ctrl">
+                  <button @click="feedQty[f.id] = Math.max(1, (feedQty[f.id]||1)-1)" :disabled="isDangerFood(f) || (pet.pet && pet.pet.sick)">−</button>
+                  <span>{{ feedQty[f.id] || 1 }}</span>
+                  <button @click="feedQty[f.id] = Math.min(maxBuyable(f), (feedQty[f.id]||1)+1)" :disabled="isDangerFood(f) || (pet.pet && pet.pet.sick)">+</button>
+                </div>
+                <button class="primary sm" :disabled="feedBusy || points < f.price || isDangerFood(f) || (pet.pet && pet.pet.sick)" @click="openFeedConfirm(f)">
+                  {{ isDangerFood(f) ? '不适合' : (pet.pet && pet.pet.sick ? '休息中' : (points < f.price ? '积分不足' : '购买')) }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <p class="muted" v-if="!petFoods.length">暂无可购买的食物</p>
+        </div>
+
+        <!-- 形态图鉴 -->
+        <div class="card" v-show="petSubTab==='species'">
+          <h3>📖 形态图鉴</h3>
+          <p class="muted" style="margin-bottom:12px">共 {{ petSpeciesPaged.total }} 种宠物，每种拥有 4 个成长形态</p>
+
+          <!-- 三列网格 -->
+          <div class="species-grid">
+            <div class="species-grid-card" v-for="s in petSpeciesPaged.items" :key="s.id">
+              <div class="sgc-name">{{ s.name }}</div>
+              <div class="sgc-stages">
+                <div class="sgc-stage">
+                  <span class="sgc-emoji">{{ s.emoji_baby }}</span>
+                  <span class="sgc-label">幼年</span>
+                </div>
+                <div class="sgc-stage">
+                  <span class="sgc-emoji">{{ s.emoji_youth }}</span>
+                  <span class="sgc-label">少年</span>
+                </div>
+                <div class="sgc-stage">
+                  <span class="sgc-emoji">{{ s.emoji_adult }}</span>
+                  <span class="sgc-label">成年</span>
+                </div>
+                <div class="sgc-stage">
+                  <span class="sgc-emoji">{{ s.emoji_legend }}</span>
+                  <span class="sgc-label">传奇</span>
+                </div>
+              </div>
+              <div class="sgc-desc" v-if="s.description">{{ s.description }}</div>
+            </div>
+          </div>
+
+          <p class="muted" v-if="!petSpeciesPaged.items.length">暂无可展示的宠物种类</p>
+          <pager :page="petSpeciesPaged.page" :pages="petSpeciesPaged.pages" :total="petSpeciesPaged.total" @go="loadPetSpeciesPaged"></pager>
+        </div>
+
+        <!-- 宠物管理 -->
+        <div class="card" v-show="petSubTab==='manage'">
+          <h3>⚙️ 宠物管理</h3>
+          <p class="muted">放弃当前宠物后，所有成长进度将丢失，你可以重新领养一只新宠物。</p>
+          <button class="ghost danger-btn" :disabled="petBusy" @click="doAbandon">🚫 放弃宠物</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 🎰 抽奖（已移至商城内） -->
     <section class="page" v-if="view==='lottery'">
       <div class="card center lottery-card">
         <div class="lottery-ticket-row">
@@ -388,7 +580,7 @@
     <nav class="tabbar">
       <div :class="{on:view==='home'}" @click="go('home')">🏠<span>首页</span></div>
       <div :class="{on:view==='checkin-challenge'}" @click="go('checkin-challenge')">📝<span>打卡闯关</span></div>
-      <div :class="{on:view==='lottery'}" @click="go('lottery')">🎰<span>抽奖</span></div>
+      <div :class="{on:view==='pet'}" @click="go('pet')">🐾<span>宠物乐园</span></div>
       <div :class="{on:view==='mall'}" @click="go('mall')">🛍️<span>商城</span></div>
       <div :class="{on:view==='me'}" @click="go('me')">👤<span>我的</span></div>
     </nav>
@@ -409,6 +601,35 @@
       </div>
       <div class="modal-actions">
         <button class="ghost" @click="cancelReplace">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 喂养确认弹窗 -->
+  <div class="modal" v-if="feedConfirm">
+    <div class="modal-card">
+      <h3>🍖 确认喂养</h3>
+      <div class="feed-confirm-body">
+        <div class="fcb-emoji">{{ feedConfirm.emoji }}</div>
+        <p>给 <b>{{ pet.pet.nickname }}</b> 喂食 <b>{{ feedConfirm.name }}</b> × <b>{{ feedQty[feedConfirm.id] || 1 }}</b></p>
+        <div class="fcb-summary">
+          <span>消耗 ⭐{{ feedConfirm.price * (feedQty[feedConfirm.id] || 1) }} 积分</span>
+          <span>获得 +{{ feedConfirm.xp_value * (feedQty[feedConfirm.id] || 1) }} XP</span>
+        </div>
+        <!-- 适配性警告 -->
+        <div class="fcb-warning" v-if="isWarningFood(feedConfirm)">
+          ⚠️ {{ feedConfirm.suitability.note || (feedConfirm.name + ' 可能不太适合 ' + pet.pet.nickname) }}
+          <br><small>强行喂食可能导致肚子疼，宠物需要休息</small>
+        </div>
+        <div class="fcb-perfect" v-if="feedConfirm.suitability && feedConfirm.suitability.level === 'perfect'">
+          ✅ {{ pet.pet.nickname }} 非常喜欢这个食物！连续喂食完美食物可触发连击加成
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost" @click="feedConfirm=null">取消</button>
+        <button class="primary" :disabled="feedBusy" @click="doFeed">
+          {{ feedBusy ? '喂养中…' : '确认喂养' }}
+        </button>
       </div>
     </div>
   </div>

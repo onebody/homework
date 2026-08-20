@@ -122,3 +122,26 @@ DEFAULT_PUSH_TEMPLATES = {
     "challenge_body": "时间：{time}\n{points_line}\n{reason_line}",
     "signature": "—— 暑假作业打卡系统",
 }
+
+# ========== 宠物领养系统配置 ==========
+# 打卡获得的宠物成长经验值（与积分并行，不冲突）
+PET_CHECKIN_XP_NORMAL = int(os.environ.get("PET_CHECKIN_XP_NORMAL", "5"))   # 正常打卡 +5 XP
+PET_CHECKIN_XP_MAKEUP = int(os.environ.get("PET_CHECKIN_XP_MAKEUP", "2"))   # 补卡 +2 XP
+
+# 宠物成长阶段阈值（累计 XP 达到该值自动升级）
+PET_STAGE_THRESHOLDS = {
+    "baby": 0,       # 幼年期：0-49 XP
+    "youth": 50,     # 少年期：50-149 XP
+    "adult": 150,    # 成年期：150-299 XP
+    "legend": 300,   # 传奇期：300+ XP
+}
+
+# 宠物种类默认配置（后续可扩展为数据库表）
+PET_SPECIES_DEFAULT = {
+    "name": "学习猫",
+    "description": "爱读书的小猫咪，陪你一起成长",
+    "emoji_baby": "🐱",
+    "emoji_youth": "😺",
+    "emoji_adult": "😸",
+    "emoji_legend": "🦁",
+}

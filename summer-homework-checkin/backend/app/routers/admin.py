@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
 
-from ..models import User, CheckIn, StudentParent, Redemption, Prize, LotteryRecord, Notification, PushLog
+from ..models import User, CheckIn, StudentParent, Redemption, Prize, LotteryRecord, Notification, PushLog, PetAdoption, PetFeedLog, PetSpecies, PetFeedItem
 from ..database import get_db
 from ..schemas import ReviewRequest, PushConfigIn, PushConfigOut, PushLogOut, PushTestRequest, PushTemplatePreviewIn, SiteConfigIn, SiteConfigOut
 from ..config import SUMMER_START, SUMMER_END, CHECKIN_POINTS, MAKEUP_POINTS, DEFAULT_PUSH_TEMPLATES
@@ -15,6 +15,7 @@ from ..utils.storage import public_url
 from ..utils.pagination import ADMIN_PAGE_SIZE, Page, paginate
 from ..services import checkin_service
 from ..services import webhook_push_service
+from ..services.pet_service import compute_suitability
 
 # 服务启动时间（用于计算运行时长）
 _SERVER_START = _time.time()
@@ -484,3 +485,528 @@ def push_logs(
     """推送历史倒序列表（分页）。"""
     items, meta = paginate(db.query(PushLog).order_by(PushLog.id.desc()), page, size)
     return Page[PushLogOut](items=items, **meta)
+
+
+# ========== 宠物管理 ==========
+
+@router.get("/pets/overview")
+def pets_overview(
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """宠物领养情况总览。"""
+    total_students = db.query(User).filter_by(role="student").count()
+    adopted_count = db.query(PetAdoption).filter_by(is_active=True).count()
+    total_ever_adopted = db.query(PetAdoption).count()
+    # 各阶段分布
+    stage_dist = {}
+    for stage in ["baby", "youth", "adult", "legend"]:
+        stage_dist[stage] = db.query(PetAdoption).filter_by(is_active=True, current_stage=stage).count()
+    return {
+        "total_students": total_students,
+        "adopted_count": adopted_count,
+        "not_adopted_count": total_students - adopted_count,
+        "total_ever_adopted": total_ever_adopted,
+        "stage_distribution": stage_dist,
+    }
+
+
+@router.get("/pets/adoptions")
+def pets_adoptions(
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
+    search: str = "",
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """宠物领养列表（可按用户名/昵称搜索）。"""
+    q = db.query(PetAdoption).join(User, PetAdoption.user_id == User.id)
+    if search:
+        kw = f"%{search}%"
+        q = q.filter((User.username.ilike(kw)) | (User.nickname.ilike(kw)) | (PetAdoption.nickname.ilike(kw)))
+    q = q.order_by(PetAdoption.id.desc())
+    items, meta = paginate(q, page, size)
+    result = []
+    for a in items:
+        user = db.get(User, a.user_id)
+        species = a.species
+        result.append({
+            "id": a.id,
+            "user_id": a.user_id,
+            "username": user.username if user else "",
+            "nickname": user.nickname if user else "",
+            "pet_nickname": a.nickname,
+            "species_name": species.name if species else "",
+            "emoji": getattr(species, f"emoji_{a.current_stage}", "🐾") if species else "🐾",
+            "current_xp": a.current_xp,
+            "current_stage": a.current_stage,
+            "stage_label": {"baby": "幼年期", "youth": "少年期", "adult": "成年期", "legend": "传奇期"}.get(a.current_stage, a.current_stage),
+            "adopted_at": a.adopted_at.isoformat() if a.adopted_at else None,
+            "last_fed_at": a.last_fed_at.isoformat() if a.last_fed_at else None,
+            "is_active": a.is_active,
+            "abandoned_at": a.abandoned_at.isoformat() if a.abandoned_at else None,
+        })
+    return {"items": result, **meta}
+
+
+@router.get("/pets/feed-logs")
+def pets_feed_logs(
+    page: int = 1,
+    size: int = ADMIN_PAGE_SIZE,
+    adoption_id: int = 0,
+    user_id: int = 0,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """宠物成长流水（可按领养 ID 或用户 ID 筛选）。"""
+    q = db.query(PetFeedLog)
+    if adoption_id:
+        q = q.filter_by(adoption_id=adoption_id)
+    if user_id:
+        q = q.filter_by(user_id=user_id)
+    q = q.order_by(PetFeedLog.id.desc())
+    items, meta = paginate(q, page, size)
+    result = []
+    for log in items:
+        user = db.get(User, log.user_id)
+        adoption = db.get(PetAdoption, log.adoption_id)
+        result.append({
+            "id": log.id,
+            "user_id": log.user_id,
+            "username": user.username if user else "",
+            "nickname": user.nickname if user else "",
+            "pet_nickname": adoption.nickname if adoption else "",
+            "feed_type": log.feed_type,
+            "xp_gained": log.xp_gained,
+            "total_xp_after": log.total_xp_after,
+            "stage_before": log.stage_before,
+            "stage_after": log.stage_after,
+            "stage_changed": log.stage_before != log.stage_after if log.stage_before and log.stage_after else False,
+            "trigger_checkin_id": log.trigger_checkin_id,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        })
+    return {"items": result, **meta}
+
+
+@router.put("/pets/{adoption_id}/adjust")
+def pet_adjust(
+    adoption_id: int,
+    xp_delta: int = 0,
+    set_stage: str = "",
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """管理员手动调整宠物数据（XP 增减 / 强制设定阶段）。"""
+    from ..services.pet_service import calc_stage as _calc_stage
+    adoption = db.get(PetAdoption, adoption_id)
+    if not adoption:
+        raise HTTPException(status_code=404, detail="宠物不存在")
+    user = db.get(User, adoption.user_id)
+    old_stage = adoption.current_stage
+
+    if xp_delta != 0:
+        adoption.current_xp = max(0, adoption.current_xp + xp_delta)
+    if set_stage and set_stage in ("baby", "youth", "adult", "legend"):
+        adoption.current_stage = set_stage
+    elif xp_delta != 0:
+        adoption.current_stage = _calc_stage(adoption.current_xp)
+
+    # 同步 User 冗余字段
+    if user and adoption.is_active:
+        user.pet_xp = adoption.current_xp
+        user.pet_level = adoption.current_stage
+
+    # 写流水
+    log = PetFeedLog(
+        user_id=adoption.user_id,
+        adoption_id=adoption.id,
+        feed_type="admin_adjust",
+        xp_gained=xp_delta,
+        total_xp_after=adoption.current_xp,
+        stage_before=old_stage,
+        stage_after=adoption.current_stage,
+    )
+    db.add(log)
+    db.commit()
+    return {"message": "已调整", "current_xp": adoption.current_xp, "current_stage": adoption.current_stage}
+
+
+@router.get("/pets/species")
+def pets_species_list(
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """获取所有宠物种类配置。"""
+    species = db.query(PetSpecies).order_by(PetSpecies.sort_order).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "description": s.description,
+            "emoji_baby": s.emoji_baby,
+            "emoji_youth": s.emoji_youth,
+            "emoji_adult": s.emoji_adult,
+            "emoji_legend": s.emoji_legend,
+            "status": s.status,
+            "sort_order": s.sort_order,
+        }
+        for s in species
+    ]
+
+
+@router.post("/pets/species")
+def pets_species_create(
+    name: str = "",
+    description: str = "",
+    emoji_baby: str = "🐣",
+    emoji_youth: str = "🐥",
+    emoji_adult: str = "🐔",
+    emoji_legend: str = "🦄",
+    sort_order: int = 0,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """新增宠物种类。"""
+    if not name or not name.strip():
+        raise HTTPException(status_code=400, detail="种类名称不能为空")
+    species = PetSpecies(
+        name=name.strip(),
+        description=description,
+        emoji_baby=emoji_baby,
+        emoji_youth=emoji_youth,
+        emoji_adult=emoji_adult,
+        emoji_legend=emoji_legend,
+        status="on",
+        sort_order=sort_order,
+    )
+    db.add(species)
+    db.commit()
+    db.refresh(species)
+    return {"message": "已创建", "id": species.id}
+
+
+@router.put("/pets/species/{species_id}")
+def pets_species_update(
+    species_id: int,
+    name: str = "",
+    description: str = "",
+    emoji_baby: str = "",
+    emoji_youth: str = "",
+    emoji_adult: str = "",
+    emoji_legend: str = "",
+    status: str = "",
+    sort_order: int = -1,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """更新宠物种类配置。"""
+    species = db.get(PetSpecies, species_id)
+    if not species:
+        raise HTTPException(status_code=404, detail="种类不存在")
+    if name:
+        species.name = name
+    if description:
+        species.description = description
+    if emoji_baby:
+        species.emoji_baby = emoji_baby
+    if emoji_youth:
+        species.emoji_youth = emoji_youth
+    if emoji_adult:
+        species.emoji_adult = emoji_adult
+    if emoji_legend:
+        species.emoji_legend = emoji_legend
+    if status in ("on", "off"):
+        species.status = status
+    if sort_order >= 0:
+        species.sort_order = sort_order
+    db.commit()
+    return {"message": "已更新"}
+
+
+@router.delete("/pets/species/{species_id}")
+def pets_species_delete(
+    species_id: int,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """删除宠物种类（已有领养记录时禁止删除）。"""
+    species = db.get(PetSpecies, species_id)
+    if not species:
+        raise HTTPException(status_code=404, detail="种类不存在")
+    # 检查是否有领养记录
+    adoption_count = db.query(PetAdoption).filter_by(species_id=species_id).count()
+    if adoption_count > 0:
+        raise HTTPException(status_code=400, detail=f"该种类已有 {adoption_count} 条领养记录，无法删除。可改为「不可领养」状态。")
+    db.delete(species)
+    db.commit()
+    return {"message": "已删除"}
+
+
+# ========== 宠物食物管理 ==========
+
+@router.get("/pets/foods")
+def pets_foods_list(
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """获取所有宠物食物列表。"""
+    items = db.query(PetFeedItem).order_by(PetFeedItem.sort_order).all()
+    return [
+        {
+            "id": f.id,
+            "name": f.name,
+            "description": f.description,
+            "emoji": f.emoji,
+            "price": f.price,
+            "xp_value": f.xp_value,
+            "species_id": f.species_id,
+            "species_name": f.species.name if f.species else None,
+            "status": f.status,
+            "sort_order": f.sort_order,
+        }
+        for f in items
+    ]
+
+
+@router.post("/pets/foods")
+def pets_foods_create(
+    name: str = "",
+    description: str = "",
+    emoji: str = "🍎",
+    price: int = 5,
+    xp_value: int = 5,
+    species_id: int = 0,
+    sort_order: int = 0,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """创建宠物食物。"""
+    if not name or not name.strip():
+        raise HTTPException(status_code=400, detail="食物名称不能为空")
+    if price < 1:
+        raise HTTPException(status_code=400, detail="积分价格至少为 1")
+    if xp_value < 1:
+        raise HTTPException(status_code=400, detail="经验值至少为 1")
+    food = PetFeedItem(
+        name=name.strip(), description=description, emoji=emoji,
+        price=price, xp_value=xp_value,
+        species_id=species_id if species_id > 0 else None,
+        sort_order=sort_order,
+    )
+    db.add(food)
+    db.commit()
+    return {"message": "已创建", "id": food.id}
+
+
+@router.put("/pets/foods/{food_id}")
+def pets_foods_update(
+    food_id: int,
+    name: str = "",
+    description: str = "",
+    emoji: str = "",
+    price: int = -1,
+    xp_value: int = -1,
+    species_id: int = -1,
+    status: str = "",
+    sort_order: int = -1,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """更新宠物食物。"""
+    food = db.get(PetFeedItem, food_id)
+    if not food:
+        raise HTTPException(status_code=404, detail="食物不存在")
+    if name and name.strip():
+        food.name = name.strip()
+    if description is not None:
+        food.description = description
+    if emoji and emoji.strip():
+        food.emoji = emoji.strip()
+    if price >= 0:
+        food.price = price
+    if xp_value >= 0:
+        food.xp_value = xp_value
+    if species_id >= 0:
+        food.species_id = species_id if species_id > 0 else None
+    if status and status in ("on", "off"):
+        food.status = status
+    if sort_order >= 0:
+        food.sort_order = sort_order
+    db.commit()
+    return {"message": "已更新"}
+
+
+@router.delete("/pets/foods/{food_id}")
+def pets_foods_delete(
+    food_id: int,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """删除宠物食物（已有喂养记录时禁止删除）。"""
+    food = db.get(PetFeedItem, food_id)
+    if not food:
+        raise HTTPException(status_code=404, detail="食物不存在")
+    feed_count = db.query(PetFeedLog).filter_by(feed_item_id=food_id).count()
+    if feed_count > 0:
+        raise HTTPException(status_code=400, detail=f"该食物已有 {feed_count} 条喂养记录，无法删除。可改为「下架」状态。")
+    db.delete(food)
+    db.commit()
+    return {"message": "已删除"}
+
+
+@router.get("/pets/feed-stats")
+def pets_feed_stats(
+    days: int = 7,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """喂养统计报表（按日/按食物类型）。"""
+    cutoff = now_local() - timedelta(days=days)
+
+    # 总览
+    total_feeds = db.query(PetFeedLog).filter(
+        PetFeedLog.created_at >= cutoff,
+        PetFeedLog.feed_type == "item",
+    ).count()
+    total_xp = db.query(func.sum(PetFeedLog.xp_gained)).filter(
+        PetFeedLog.created_at >= cutoff,
+        PetFeedLog.feed_type == "item",
+    ).scalar() or 0
+    total_points = db.query(func.sum(PetFeedLog.points_cost)).filter(
+        PetFeedLog.created_at >= cutoff,
+        PetFeedLog.feed_type == "item",
+    ).scalar() or 0
+
+    # 按食物统计
+    by_food = (
+        db.query(
+            PetFeedItem.name,
+            PetFeedItem.emoji,
+            func.count(PetFeedLog.id).label("count"),
+            func.sum(PetFeedLog.xp_gained).label("total_xp"),
+            func.sum(PetFeedLog.points_cost).label("total_cost"),
+        )
+        .join(PetFeedLog, PetFeedLog.feed_item_id == PetFeedItem.id)
+        .filter(PetFeedLog.created_at >= cutoff, PetFeedLog.feed_type == "item")
+        .group_by(PetFeedItem.id)
+        .order_by(func.count(PetFeedLog.id).desc())
+        .all()
+    )
+
+    return {
+        "days": days,
+        "total_feeds": total_feeds,
+        "total_xp": total_xp,
+        "total_points": total_points,
+        "by_food": [
+            {
+                "name": r.name,
+                "emoji": r.emoji,
+                "count": r.count,
+                "total_xp": r.total_xp or 0,
+                "total_cost": r.total_cost or 0,
+            }
+            for r in by_food
+        ],
+    }
+
+
+# ---------- 食物适配性管理 ----------
+
+@router.get("/pets/suitability-matrix")
+def suitability_matrix(
+    user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """获取食物适配性矩阵（横轴=食物，纵轴=宠物种类）"""
+    species_list = db.query(PetSpecies).filter_by(status="on").order_by(PetSpecies.sort_order).all()
+    foods = db.query(PetFeedItem).filter_by(status="on").order_by(PetFeedItem.sort_order).all()
+
+    matrix = []
+    for sp in species_list:
+        row = {
+            "species_id": sp.id,
+            "species_name": sp.name,
+            "diet_type": sp.diet_type or "omnivore",
+            "cells": [],
+        }
+        for food in foods:
+            suit = compute_suitability(sp, food)
+            row["cells"].append({
+                "food_id": food.id,
+                "level": suit["level"],
+                "label": suit["label"],
+                "emoji": suit["emoji"],
+            })
+        matrix.append(row)
+
+    return {
+        "species": [{"id": s.id, "name": s.name, "diet_type": s.diet_type or "omnivore"} for s in species_list],
+        "foods": [{"id": f.id, "name": f.name, "emoji": f.emoji} for f in foods],
+        "matrix": matrix,
+    }
+
+
+@router.put("/pets/foods/{food_id}/suitability")
+def update_food_suitability(
+    food_id: int,
+    level: str,
+    note: str = "",
+    user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """更新食物的默认适配等级"""
+    food = db.query(PetFeedItem).filter_by(id=food_id).first()
+    if not food:
+        raise HTTPException(404, "食物不存在")
+    valid_levels = ("perfect", "suitable", "caution", "warning", "danger")
+    if level not in valid_levels:
+        raise HTTPException(400, f"适配等级无效，可选值：{', '.join(valid_levels)}")
+    food.suitability_level = level
+    food.suitability_note = note or None
+    db.commit()
+    return {"message": f"已更新 {food.name} 的适配等级为 {level}"}
+
+
+# ---------- 生病/治愈记录查询 ----------
+
+@router.get("/pets/sick-records")
+def sick_records(
+    days: int = 30,
+    user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """查询最近 N 天的异常喂养事件（触发疾病的记录）"""
+    cutoff = now_local() - timedelta(days=days)
+
+    # 查询 suitability_result 为 warning/caution 的喂养记录
+    logs = (
+        db.query(PetFeedLog)
+        .filter(
+            PetFeedLog.created_at >= cutoff,
+            PetFeedLog.feed_type == "item",
+            PetFeedLog.suitability_result.in_(["warning", "caution"]),
+        )
+        .order_by(PetFeedLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    return {
+        "days": days,
+        "total": len(logs),
+        "records": [
+            {
+                "id": log.id,
+                "user_id": log.user_id,
+                "username": log.adoption.user.username if log.adoption else "",
+                "pet_name": log.adoption.nickname if log.adoption else "",
+                "food_id": log.feed_item_id,
+                "suitability": log.suitability_result,
+                "xp_gained": log.xp_gained,
+                "points_cost": log.points_cost,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ],
+    }

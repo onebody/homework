@@ -314,6 +314,20 @@ const app = createApp({
       challengePhotoData: "",
       challengePhotoFile: null,
       challengeSubmitting: false,
+      // 宠物乐园
+      pet: { has_pet: false, pet: null },
+      petSpecies: [],
+      petFeedLog: [],
+      petFeedPg: { page: 1, pages: 1, total: 0 },
+      petAdoptForm: { species_id: 0, nickname: "" },
+      petBusy: false,
+      petSubTab: "status",  // status | log | species
+      petSpeciesPaged: { items: [], total: 0, page: 1, pages: 1 },
+      petAdoptPaged: { items: [], total: 0, page: 1, pages: 1 },
+      petFoods: [],
+      feedQty: {},
+      feedConfirm: null,
+      feedBusy: false,
     };
   },
   computed: {
@@ -510,13 +524,13 @@ const app = createApp({
     },
     async go(v) {
       this.view = v;
-      if (v === "lottery") await this.loadMall();
       if (v === "mall") await this.loadMall();
       if (v === "me") { await this.loadHistory(); if (!this.isParent) await this.loadFaceStatus(); }
       if (v === "home") {
         if (this.isParent) await this.loadChildHome();
         else await this.loadHome();
       }
+      if (v === "pet") await this.loadPetStatus();
       if (v === "checkin-challenge") {
         this.ccTab = "checkin";
         if (this.isParent) await this.loadChildHome();
@@ -895,6 +909,176 @@ const app = createApp({
       } finally {
         this.challengeSubmitting = false;
       }
+    },
+
+    /* ============ 宠物乐园 ============ */
+    async loadPetStatus() {
+      try {
+        this.pet = await this.api("/api/pet/status");
+        if (!this.pet.has_pet && !this.petAdoptPaged.items.length) {
+          await this.loadPetAdoptPaged(1);
+        }
+      } catch (e) { this.pet = { has_pet: false, pet: null }; }
+    },
+    async loadPetSpecies() {
+      try {
+        this.petSpecies = await this.api("/api/pet/species");
+        if (this.petSpecies.length && !this.petAdoptForm.species_id) {
+          this.petAdoptForm.species_id = this.petSpecies[0].id;
+        }
+      } catch (e) { this.petSpecies = []; }
+    },
+    async loadPetAdoptPaged(page) {
+      const p = Number(page) || this.petAdoptPaged.page || 1;
+      try {
+        const d = await this.api("/api/pet/species/list?page=" + p + "&size=12");
+        this.petAdoptPaged = {
+          items: d.items || [],
+          total: d.total || 0,
+          page: d.page || 1,
+          pages: d.pages || 1,
+        };
+        // 自动选中第一个
+        if (this.petAdoptPaged.items.length && !this.petAdoptForm.species_id) {
+          this.petAdoptForm.species_id = this.petAdoptPaged.items[0].id;
+        }
+      } catch (e) { this.petAdoptPaged = { items: [], total: 0, page: 1, pages: 1 }; }
+    },
+    async loadPetSpeciesPaged(page) {
+      const p = Number(page) || this.petSpeciesPaged.page || 1;
+      try {
+        const d = await this.api("/api/pet/species/list?page=" + p + "&size=12");
+        this.petSpeciesPaged = {
+          items: d.items || [],
+          total: d.total || 0,
+          page: d.page || 1,
+          pages: d.pages || 1,
+        };
+      } catch (e) { this.petSpeciesPaged = { items: [], total: 0, page: 1, pages: 1 }; }
+    },
+    async loadPetFeedLog(page) {
+      const p = Number(page) || this.petFeedPg.page || 1;
+      try {
+        const d = await this.api("/api/pet/feed-log?page=" + p + "&size=10");
+        this.petFeedLog = d.items || [];
+        this.petFeedPg = { page: d.page || 1, pages: d.pages || 1, total: d.total || 0 };
+      } catch (e) { this.petFeedLog = []; }
+    },
+    async loadPetFoods() {
+      try {
+        this.petFoods = await this.api("/api/pet/foods");
+      } catch (e) { this.petFoods = []; }
+    },
+    maxBuyable(food) {
+      return Math.max(1, Math.floor(this.points / food.price));
+    },
+    suitEmoji(food) {
+      if (!food.suitability) return "👍";
+      return food.suitability.emoji || "👍";
+    },
+    suitLabel(food) {
+      if (!food.suitability) return "";
+      return food.suitability.label || "";
+    },
+    suitClass(food) {
+      if (!food.suitability) return "suit-suitable";
+      return "suit-" + (food.suitability.level || "suitable");
+    },
+    isDangerFood(food) {
+      return food.suitability && food.suitability.level === "danger";
+    },
+    isWarningFood(food) {
+      return food.suitability && (food.suitability.level === "warning" || food.suitability.level === "caution");
+    },
+    openFeedConfirm(food) {
+      if (!this.pet.has_pet) { this.showToast("请先领养宠物"); return; }
+      if (this.isDangerFood(food)) { this.showToast("🚫 " + food.suitability.note); return; }
+      if (this.points < food.price) { this.showToast("积分不足"); return; }
+      this.feedConfirm = food;
+      this.feedQty[food.id] = this.feedQty[food.id] || 1;
+    },
+    async doFeed() {
+      if (!this.feedConfirm) return;
+      this.feedBusy = true;
+      const qty = this.feedQty[this.feedConfirm.id] || 1;
+      try {
+        const d = await this.api("/api/pet/feed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ food_id: this.feedConfirm.id, quantity: qty }),
+        });
+        let msg = d.message || "喂养成功！";
+        if (d.streak_bonus) msg += " ✨连击加成！";
+        this.showToast(msg);
+        this.feedConfirm = null;
+        // 刷新宠物状态和积分
+        await this.loadPetStatus();
+        await this.loadPetFoods();
+      } catch (e) {
+        this.showToast(e.message || "喂养失败");
+      } finally {
+        this.feedBusy = false;
+      }
+    },
+    sickRemainingText() {
+      if (!this.pet.has_pet || !this.pet.pet || !this.pet.pet.sick) return "";
+      const secs = this.pet.pet.sick_remaining_seconds || 0;
+      if (secs <= 0) return "";
+      const mins = Math.ceil(secs / 60);
+      if (mins >= 60) return Math.floor(mins / 60) + "小时" + (mins % 60) + "分钟";
+      return mins + "分钟";
+    },
+    async doAdopt() {
+      if (!this.petAdoptForm.species_id) { this.showToast("请选择宠物种类"); return; }
+      this.petBusy = true;
+      try {
+        const d = await this.api("/api/pet/adopt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(this.petAdoptForm),
+        });
+        this.showToast(d.message || "领养成功！");
+        await this.loadPetStatus();
+      } catch (e) { this.showToast(e.message); }
+      finally { this.petBusy = false; }
+    },
+    async doAbandon() {
+      if (!confirm("确定要放弃当前宠物吗？放弃后所有成长进度将丢失，且无法恢复。")) return;
+      this.petBusy = true;
+      try {
+        const d = await this.api("/api/pet/abandon", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        this.showToast(d.message || "已放弃宠物");
+        this.petAdoptForm.species_id = 0;
+        await this.loadPetStatus();
+        await this.loadPetAdoptPaged(1);
+      } catch (e) { this.showToast(e.message); }
+      finally { this.petBusy = false; }
+    },
+    petStageEmoji(stage) {
+      if (!this.pet.pet) return "🐾";
+      const p = this.pet.pet;
+      return { baby: p.emoji_baby, youth: p.emoji_youth, adult: p.emoji_adult, legend: p.emoji_legend }[stage] || "🐾";
+    },
+    petStageLabel(stage) {
+      return { baby: "幼年期", youth: "少年期", adult: "成年期", legend: "传奇期" }[stage] || stage;
+    },
+    petXpPercent() {
+      if (!this.pet.pet) return 0;
+      const p = this.pet.pet;
+      if (!p.next_stage_xp) return 100;
+      // 当前阶段内的进度百分比
+      const thresholds = { baby: 0, youth: 50, adult: 150, legend: 300 };
+      const base = thresholds[p.current_stage] || 0;
+      const range = p.next_stage_xp - base;
+      if (range <= 0) return 100;
+      return Math.min(100, Math.round((p.current_xp - base) / range * 100));
+    },
+    feedTypeLabel(t) {
+      return { checkin: "打卡成长", admin_adjust: "管理员调整", item: "道具喂养" }[t] || t;
     },
   },
 });

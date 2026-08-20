@@ -5,6 +5,29 @@
 
 ---
 
+## v1.5.0（2026-08-20）— 宠物乐园·食物适配性校验与生态反馈
+
+### 新增
+- **食物适配性校验系统**：4 种饮食类型（carnivore/herbivore/omnivore/special）× 8 种食物分类的完整映射矩阵，5 级适配评价（perfect/suitable/caution/warning/danger）；管理员手动设置优先级最高，支持按物种特化。
+- **生态反馈机制**：喂食 warning/caution 食物触发 2 小时生病状态（期间禁止喂养）；连续 3 次 perfect 喂养触发 +20% XP 连击加成（`round()` 修复浮点精度问题）。
+- **管理后台适配性矩阵**：33 种宠物 × 12 种食物颜色块矩阵视图（`GET /api/admin/pets/suitability-matrix`），异常喂养记录查询（`GET /api/admin/pets/sick-records`），食物适配等级手动调整（`PUT /api/admin/pets/foods/{id}/suitability`）。
+- **前端适配性展示**：食物卡片 5 级 emoji 标识，danger 食物置灰不可点，warning 食物弹确认框，宠物卡片生病横幅 + 饮食标签 + 连击脉冲动画。
+- **Alembic 迁移 010→011→012**：宠物系统表 → 食物商店扩展 → 适配性校验字段。
+- **上线前安全检测**：52 项测试全部通过，评分 9.2/10（A 优秀），覆盖认证授权/越权防护/输入校验/速率限制/容器安全/业务逻辑。
+
+### 改进
+- 33 种宠物种类全量配置饮食类型（seed.py 精确匹配 + 关键词模糊匹配兼容旧数据）。
+- 12 种食物配置适配等级与说明（suitability_level/suitability_note）。
+- 宠物状态接口增强（`GET /api/pet/status` 返回 diet_type/sick/streak 信息）。
+- 食物列表接口增强（`GET /api/pet/foods` 返回每种食物的适配性信息）。
+
+### 安全
+- 登录速率限制验证通过（5 次锁定 15 分钟 + 60 秒频率限制）。
+- 容器安全加固验证通过（read_only + cap_drop ALL + 端口绑定 127.0.0.1）。
+- CORS 白名单生产不含 localhost，伪造 Token 返回 401。
+
+---
+
 ## v1.4（2026-08）— 企微智能机器人双向消息
 
 ### 新增

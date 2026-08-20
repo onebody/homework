@@ -43,6 +43,11 @@ class User(Base):
     points = Column(Integer, default=0)                 # 积分余额（打卡获得，用于兑换奖品）
     last_7_milestone = Column(Integer, default=0)       # 已解锁的 7 的倍数里程碑
 
+    # 宠物系统冗余字段（由宠物服务维护，快速查询用）
+    pet_id = Column(Integer, nullable=True)             # 当前活跃宠物 ID（关联 pet_adoption.id）
+    pet_level = Column(String(16), nullable=True)       # 当前宠物阶段（baby/youth/adult/legend）
+    pet_xp = Column(Integer, default=0)                 # 当前宠物累计成长经验值
+
     created_at = Column(DateTime, default=now_local)
 
     checkins = relationship("CheckIn", back_populates="user", cascade="all, delete-orphan")
@@ -268,3 +273,85 @@ class PushLog(Base):
     status = Column(String(16), nullable=False)              # success|failed|skipped
     error = Column(String(512), nullable=True)               # 失败/跳过原因
     created_at = Column(DateTime, default=now_local, index=True)
+
+
+# ========== 宠物领养系统 ==========
+
+class PetSpecies(Base):
+    """宠物种类配置表（管理员维护，支持扩展多种宠物）。"""
+    __tablename__ = "pet_species"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(32), nullable=False)                # 种类名称（如"学习猫"、"知识犬"）
+    description = Column(Text, nullable=True)                # 种类描述/故事背景
+    emoji_baby = Column(String(16), default="🐣")           # 幼年形态 emoji
+    emoji_youth = Column(String(16), default="🐥")          # 少年形态 emoji
+    emoji_adult = Column(String(16), default="🐔")          # 成年形态 emoji
+    emoji_legend = Column(String(16), default="🦄")         # 传奇形态 emoji
+    status = Column(String(8), default="on")                 # on（可领养）| off（不可领养）
+    sort_order = Column(Integer, default=0)                  # 排序权重
+    feeding_reminder_enabled = Column(Boolean, default=False) # 是否开启喂养提醒
+    diet_type = Column(String(50), nullable=True)            # 饮食类型：carnivore/herbivore/omnivore/special
+    created_at = Column(DateTime, default=now_local)
+
+
+class PetAdoption(Base):
+    """宠物领养记录表（每用户同时只能有 1 条 is_active=1 的记录）。"""
+    __tablename__ = "pet_adoption"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    species_id = Column(Integer, ForeignKey("pet_species.id"), nullable=False)
+    nickname = Column(String(32), nullable=True)             # 用户给宠物起的昵称
+    current_xp = Column(Integer, default=0)                  # 当前累计成长经验值
+    current_stage = Column(String(16), default="baby")       # 当前阶段：baby|youth|adult|legend
+    last_fed_at = Column(DateTime, nullable=True)            # 最后喂养/成长时间
+    adopted_at = Column(DateTime, default=now_local)         # 领养时间
+    is_active = Column(Boolean, default=True)                # 是否当前活跃宠物
+    abandoned_at = Column(DateTime, nullable=True)           # 放弃时间
+    sick_until = Column(DateTime, nullable=True)             # 生病状态截止时间（null=健康）
+    perfect_streak = Column(Integer, default=0)              # 连续完美适配喂养次数
+
+    user = relationship("User", foreign_keys=[user_id])
+    species = relationship("PetSpecies")
+
+
+class PetFeedLog(Base):
+    """宠物喂养/成长流水表（每次 XP 变动落一条，可追溯对账）。"""
+    __tablename__ = "pet_feed_log"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    adoption_id = Column(Integer, ForeignKey("pet_adoption.id"), nullable=False, index=True)
+    feed_type = Column(String(16), nullable=False)           # checkin（打卡自动）| item（道具喂养）| admin_adjust（管理员调整）
+    xp_gained = Column(Integer, nullable=False)              # 本次获得的 XP
+    total_xp_after = Column(Integer, nullable=False)         # 操作后的累计 XP
+    stage_before = Column(String(16), nullable=True)         # 操作前阶段
+    stage_after = Column(String(16), nullable=True)          # 操作后阶段（升级时不同）
+    trigger_checkin_id = Column(Integer, nullable=True)      # 触发的打卡记录 ID（打卡自动成长时）
+    feed_item_id = Column(Integer, nullable=True)            # 道具喂养时的食物 ID
+    points_cost = Column(Integer, default=0)                 # 道具喂养消耗的积分
+    suitability_result = Column(String(20), nullable=True)   # 适配结果：perfect/suitable/caution/warning/danger
+    created_at = Column(DateTime, default=now_local, index=True)
+
+    adoption = relationship("PetAdoption", foreign_keys=[adoption_id])
+
+
+class PetFeedItem(Base):
+    """宠物食物商品表（管理员配置，学生用积分购买喂养）。"""
+    __tablename__ = "pet_feed_items"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), nullable=False)                # 食物名称
+    description = Column(String(256), nullable=True)         # 食物描述/效果说明
+    emoji = Column(String(16), default="🍎")                 # 食物图标 emoji
+    price = Column(Integer, nullable=False, default=5)       # 消耗积分
+    xp_value = Column(Integer, nullable=False, default=5)    # 喂养获得的 XP
+    species_id = Column(Integer, ForeignKey("pet_species.id"), nullable=True)  # 关联种类（null=通用）
+    status = Column(String(8), default="on")                 # on（可购买）| off（下架）
+    sort_order = Column(Integer, default=0)                  # 排序权重
+    suitability_level = Column(String(20), default="suitable")  # 默认适配等级：perfect/suitable/caution/warning/danger
+    suitability_note = Column(String(256), nullable=True)    # 适配性说明文案
+    created_at = Column(DateTime, default=now_local)
+
+    species = relationship("PetSpecies", foreign_keys=[species_id])

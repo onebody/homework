@@ -8,6 +8,7 @@ from ..utils.storage import save_upload
 from .verification_service import verify_checkin
 from .notify_service import notify, notify_parents_of_student
 from .webhook_push_service import push_checkin_event
+from .pet_service import on_checkin_approved as pet_on_checkin_approved
 from ..utils.timeutil import now_local
 
 
@@ -190,10 +191,26 @@ def approve_checkin(db, ci, note=None):
     recompute_and_grant(db, user)
     db.refresh(user)
 
+    # 宠物成长：打卡审核通过时自动为活跃宠物增加经验值
+    pet_result = pet_on_checkin_approved(db, user, ci)
+    db.commit()
+    db.refresh(user)
+
+    # 构建通知消息（包含积分 + 宠物成长信息）
+    msg = f"你于 {ci.check_time.strftime('%Y-%m-%d %H:%M')} 的打卡已审核通过，当前积分 {user.points}。"
+    if pet_result:
+        pet_msg = f"宠物成长 +{pet_result['xp_gained']} XP"
+        if pet_result["stage_changed"]:
+            from .pet_service import get_stage_emoji, get_stage_label
+            new_emoji = get_stage_emoji(pet_result["new_stage"])
+            new_label = get_stage_label(pet_result["new_stage"])
+            pet_msg += f"，升级到 {new_emoji}{new_label}"
+        msg += f" {pet_msg}"
+
     notify(
         db, user.id, "student", "checkin",
         f"✅ 打卡审核通过，+{gained} 积分",
-        f"你于 {ci.check_time.strftime('%Y-%m-%d %H:%M')} 的打卡已审核通过，当前积分 {user.points}。",
+        msg,
         ci.id,
     )
     push_checkin_event(ci.id, "approved")

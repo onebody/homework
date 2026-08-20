@@ -11,7 +11,7 @@ from .config import (
 )
 from .database import engine
 from . import models  # noqa: F401 确保模型被加载
-from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge, dingtalk_bot, wecom_bot, site, uploads
+from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge, dingtalk_bot, wecom_bot, site, uploads, pet
 from .utils.rate_limit import check_rate_limit
 
 # 生产环境（PRODUCTION 非空）关闭交互式 API 文档，避免暴露接口清单与数据结构
@@ -48,6 +48,7 @@ app.include_router(dingtalk_bot.router)
 app.include_router(wecom_bot.router)
 app.include_router(site.router)
 app.include_router(uploads.router)
+app.include_router(pet.router)
 
 
 @app.middleware("http")

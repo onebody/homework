@@ -500,3 +500,27 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
   .pager button{min-width:40px;min-height:40px;line-height:38px;font-size:14px}
   .pg-info{margin:4px 0 0;width:100%;text-align:center}
 }
+
+/* ========== 食物适配性矩阵 ========== */
+.suit-matrix-table{
+  border-collapse:collapse;width:100%;font-size:13px;
+}
+.suit-matrix-table th,.suit-matrix-table td{
+  border:1px solid #e3edf7;padding:6px 8px;text-align:center;
+}
+.suit-matrix-table th{background:#f5f8fc;font-weight:600;font-size:12px}
+.suit-matrix-table td:first-child{text-align:left;white-space:nowrap}
+.suit-cell-perfect{background:#d4edda}
+.suit-cell-suitable{background:#d1ecf1}
+.suit-cell-caution{background:#fff3cd}
+.suit-cell-warning{background:#ffe0b2}
+.suit-cell-danger{background:#f8d7da}
+
+/* 异常记录标签 */
+.suit-tag{
+  display:inline-block;padding:2px 8px;border-radius:10px;
+  font-size:12px;font-weight:500;
+}
+.suit-tag-warning{background:#ffe0b2;color:#e65100}
+.suit-tag-caution{background:#fff3cd;color:#856404}
+

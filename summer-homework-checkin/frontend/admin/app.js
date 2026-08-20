@@ -281,6 +281,8 @@ const app = createApp({
         redeems: { page: 1, pages: 1, total: 0 },
         challengeCheckins: { page: 1, pages: 1, total: 0 },
         pushLogs: { page: 1, pages: 1, total: 0 },
+        petAdoptions: { page: 1, pages: 1, total: 0 },
+        petFeedLogs: { page: 1, pages: 1, total: 0 },
       },
       toast: "", toastTimer: null,
 
@@ -293,6 +295,21 @@ const app = createApp({
       pushSaving: false,      // 保存中
       tplPreview: "",         // 模板预览文本
       tplPreviewWarning: "",  // 模板预览告警（如标题缺关键词）
+
+      // ========== 宠物管理 ==========
+      petOverview: null,
+      petAdoptions: [],
+      petFeedLogs: [],
+      petSpecies: [],
+      petSearch: "",
+      petAdjustForm: null,  // {adoption_id, xp_delta, set_stage}
+      petSpeciesEditing: null,  // 种类编辑弹窗表单
+      petSpeciesSearch: "",  // 种类搜索关键词
+      petFoods: [],           // 食物列表
+      petFoodEditing: null,   // 食物编辑弹窗表单
+      feedStats: null,        // 喂养统计
+      suitabilityMatrix: null, // 适配性矩阵
+      sickRecords: [],        // 生病/治愈记录
 
       // ========== 图片查看器 ==========
       viewer: {
@@ -356,9 +373,20 @@ const app = createApp({
         redeems: "兑换审核",
         checkins: "打卡审核",
         challenges: "闯关任务",
+        pets: "宠物管理",
         push: "推送配置",
+        site: "系统设置",
         password: "修改密码",
       }[this.view] || "";
+    },
+    // 宠物种类搜索过滤
+    filteredPetSpecies() {
+      const kw = (this.petSpeciesSearch || "").trim().toLowerCase();
+      if (!kw) return this.petSpecies;
+      return this.petSpecies.filter(s =>
+        s.name.toLowerCase().includes(kw) ||
+        (s.description || "").toLowerCase().includes(kw)
+      );
     },
     // 用户管理：按角色筛选（全部/学生/家长）已改为后端分页筛选，无需前端过滤
   },
@@ -1243,6 +1271,204 @@ const app = createApp({
         caption: `${checkin.user_nickname} 的打卡附件`
       }));
       this.openViewer(images[0], images, 0);
+    },
+
+    /* ==================== 宠物管理 ==================== */
+    async openPets() {
+      this.view = "pets";
+      await this.loadPetOverview();
+      await this.loadPetAdoptions(1);
+      await this.loadPetSpecies();
+      await this.loadPetFoods();
+    },
+    async loadPetOverview() {
+      try { this.petOverview = await this.api("/api/admin/pets/overview"); }
+      catch (e) { this.showToast(e.message); }
+    },
+    async loadPetAdoptions(page) {
+      try {
+        const search = this.petSearch ? "&search=" + encodeURIComponent(this.petSearch) : "";
+        const d = await this.api("/api/admin/pets/adoptions?" + this.pgq("petAdoptions", page) + search);
+        this.petAdoptions = d.items || [];
+        this.applyPg("petAdoptions", d);
+      } catch (e) { this.petAdoptions = []; }
+    },
+    async loadPetFeedLogs(page, adoptionId, userId) {
+      try {
+        let extra = "";
+        if (adoptionId) extra += "&adoption_id=" + adoptionId;
+        if (userId) extra += "&user_id=" + userId;
+        const d = await this.api("/api/admin/pets/feed-logs?" + this.pgq("petFeedLogs", page) + extra);
+        this.petFeedLogs = d.items || [];
+        this.applyPg("petFeedLogs", d);
+      } catch (e) { this.petFeedLogs = []; }
+    },
+    async loadPetSpecies() {
+      try { this.petSpecies = await this.api("/api/admin/pets/species"); }
+      catch (e) { this.petSpecies = []; }
+    },
+    searchPets() { this.loadPetAdoptions(1); },
+    openPetAdjust(adoption) {
+      this.petAdjustForm = { adoption_id: adoption.id, xp_delta: 0, set_stage: "" };
+    },
+    async doPetAdjust() {
+      if (!this.petAdjustForm) return;
+      const { adoption_id, xp_delta, set_stage } = this.petAdjustForm;
+      try {
+        const params = new URLSearchParams();
+        if (xp_delta) params.append("xp_delta", xp_delta);
+        if (set_stage) params.append("set_stage", set_stage);
+        await this.api(`/api/admin/pets/${adoption_id}/adjust?${params}`, { method: "PUT" });
+        this.showToast("已调整");
+        this.petAdjustForm = null;
+        await this.loadPetAdoptions();
+      } catch (e) { this.showToast(e.message); }
+    },
+    viewPetFeedLogs(adoption) {
+      this.loadPetFeedLogs(1, adoption.id, 0);
+    },
+    petStageLabel(s) {
+      return { baby: "幼年期", youth: "少年期", adult: "成年期", legend: "传奇期" }[s] || s;
+    },
+    petFeedTypeLabel(t) {
+      return { checkin: "打卡成长", admin_adjust: "管理员调整", item: "道具喂养" }[t] || t;
+    },
+    /* ---- 宠物种类管理 ---- */
+    openSpeciesAdd() {
+      this.petSpeciesEditing = {
+        id: 0, name: "", description: "",
+        emoji_baby: "🐣", emoji_youth: "🐥", emoji_adult: "🐔", emoji_legend: "🦄",
+        sort_order: 0,
+      };
+    },
+    openSpeciesEdit(s) {
+      this.petSpeciesEditing = { ...s };
+    },
+    async saveSpecies() {
+      const f = this.petSpeciesEditing;
+      if (!f || !f.name.trim()) { this.showToast("请填写种类名称"); return; }
+      try {
+        if (f.id) {
+          // 更新
+          const params = new URLSearchParams();
+          if (f.name) params.append("name", f.name);
+          if (f.description) params.append("description", f.description);
+          if (f.emoji_baby) params.append("emoji_baby", f.emoji_baby);
+          if (f.emoji_youth) params.append("emoji_youth", f.emoji_youth);
+          if (f.emoji_adult) params.append("emoji_adult", f.emoji_adult);
+          if (f.emoji_legend) params.append("emoji_legend", f.emoji_legend);
+          if (f.sort_order >= 0) params.append("sort_order", f.sort_order);
+          await this.api(`/api/admin/pets/species/${f.id}?${params}`, { method: "PUT" });
+          this.showToast("种类已更新");
+        } else {
+          // 新增
+          const params = new URLSearchParams();
+          params.append("name", f.name);
+          if (f.description) params.append("description", f.description);
+          params.append("emoji_baby", f.emoji_baby);
+          params.append("emoji_youth", f.emoji_youth);
+          params.append("emoji_adult", f.emoji_adult);
+          params.append("emoji_legend", f.emoji_legend);
+          params.append("sort_order", f.sort_order || 0);
+          await this.api(`/api/admin/pets/species?${params}`, { method: "POST" });
+          this.showToast("种类已创建");
+        }
+        this.petSpeciesEditing = null;
+        await this.loadPetSpecies();
+      } catch (e) { this.showToast(e.message); }
+    },
+    async toggleSpeciesStatus(s) {
+      try {
+        const newStatus = s.status === "on" ? "off" : "on";
+        const params = new URLSearchParams();
+        params.append("status", newStatus);
+        await this.api(`/api/admin/pets/species/${s.id}?${params}`, { method: "PUT" });
+        this.showToast(newStatus === "on" ? "已开启领养" : "已关闭领养");
+        await this.loadPetSpecies();
+      } catch (e) { this.showToast(e.message); }
+    },
+    async deleteSpecies(s) {
+      if (!confirm(`确认删除宠物种类「${s.name}」？此操作不可恢复。`)) return;
+      try {
+        await this.api(`/api/admin/pets/species/${s.id}`, { method: "DELETE" });
+        this.showToast("已删除");
+        await this.loadPetSpecies();
+      } catch (e) { this.showToast(e.message); }
+    },
+
+    /* ==================== 宠物食物管理 ==================== */
+    async loadPetFoods() {
+      try { this.petFoods = await this.api("/api/admin/pets/foods"); }
+      catch (e) { this.petFoods = []; }
+    },
+    openFoodAdd() {
+      this.petFoodEditing = { id: null, name: "", description: "", emoji: "🍎", price: 5, xp_value: 5, sort_order: 0 };
+    },
+    openFoodEdit(f) {
+      this.petFoodEditing = { ...f };
+    },
+    async saveFood() {
+      const f = this.petFoodEditing;
+      if (!f.name || !f.name.trim()) { this.showToast("食物名称不能为空"); return; }
+      try {
+        if (f.id) {
+          const p = new URLSearchParams();
+          p.set("name", f.name); p.set("description", f.description || "");
+          p.set("emoji", f.emoji || "🍎"); p.set("price", f.price); p.set("xp_value", f.xp_value);
+          p.set("sort_order", f.sort_order || 0);
+          await this.api(`/api/admin/pets/foods/${f.id}`, { method: "PUT", body: p });
+        } else {
+          const p = new URLSearchParams();
+          p.set("name", f.name); p.set("description", f.description || "");
+          p.set("emoji", f.emoji || "🍎"); p.set("price", f.price); p.set("xp_value", f.xp_value);
+          p.set("sort_order", f.sort_order || 0);
+          await this.api("/api/admin/pets/foods", { method: "POST", body: p });
+        }
+        this.showToast(f.id ? "已更新" : "已创建");
+        this.petFoodEditing = null;
+        await this.loadPetFoods();
+      } catch (e) { this.showToast(e.message); }
+    },
+    async toggleFoodStatus(f) {
+      const newStatus = f.status === "on" ? "off" : "on";
+      try {
+        await this.api(`/api/admin/pets/foods/${f.id}?status=${newStatus}`, { method: "PUT" });
+        await this.loadPetFoods();
+      } catch (e) { this.showToast(e.message); }
+    },
+    async deleteFood(f) {
+      if (!confirm(`确认删除食物「${f.name}」？此操作不可恢复。`)) return;
+      try {
+        await this.api(`/api/admin/pets/foods/${f.id}`, { method: "DELETE" });
+        this.showToast("已删除");
+        await this.loadPetFoods();
+      } catch (e) { this.showToast(e.message); }
+    },
+    async loadFeedStats() {
+      try {
+        this.feedStats = await this.api("/api/admin/pets/feed-stats?days=7");
+      } catch (e) { this.showToast(e.message); }
+    },
+    /* ==================== 食物适配性管理 ==================== */
+    async loadSuitabilityMatrix() {
+      try {
+        this.suitabilityMatrix = await this.api("/api/admin/pets/suitability-matrix");
+      } catch (e) { this.suitabilityMatrix = null; this.showToast(e.message); }
+    },
+    suitCellClass(level) {
+      return {
+        "perfect": "suit-cell-perfect",
+        "suitable": "suit-cell-suitable",
+        "caution": "suit-cell-caution",
+        "warning": "suit-cell-warning",
+        "danger": "suit-cell-danger",
+      }[level] || "suit-cell-suitable";
+    },
+    async loadSickRecords() {
+      try {
+        const d = await this.api("/api/admin/pets/sick-records?days=30");
+        this.sickRecords = d.records || [];
+      } catch (e) { this.sickRecords = []; }
     },
   },
 });
