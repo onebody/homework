@@ -404,3 +404,75 @@ button{font-family:inherit;cursor:pointer;border:none}
   padding:10px 14px;margin-top:12px;
   color:#155724;font-size:13px;text-align:center;
 }
+
+/* ==================== 移动端响应式适配 ==================== */
+
+/* 小屏手机（≤400px）：iPhone SE / 小型 Android */
+@media (max-width:400px){
+  /* 顶栏紧凑 */
+  .topbar{padding:12px 12px;font-size:14px}
+  .topbar .hi{font-size:14px}
+  .topbar .ticket{font-size:12px;padding:3px 8px}
+
+  /* Hero 区域改为纵向堆叠 */
+  .hero{flex-direction:column;align-items:center;text-align:center;padding:16px 12px;gap:10px}
+  .hero-streak .num{font-size:36px}
+  .hero-sub{text-align:center;font-size:12px;line-height:1.7}
+
+  /* 宠物子标签页：允许横向滚动，防止文字挤压 */
+  .pet-subtabs{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;padding-bottom:4px}
+  .pet-subtabs button{flex:none;min-width:auto;padding:8px 10px;font-size:12px;white-space:nowrap}
+
+  /* 宠物 XP 信息改为纵向堆叠 */
+  .pet-xp-info{flex-direction:column;align-items:center;gap:4px;text-align:center}
+
+  /* 宠物阶段行紧凑 */
+  .pet-stages-row{gap:4px}
+  .psd-emoji{font-size:20px}
+  .psd-label{font-size:10px}
+
+  /* 食物卡片适配性标识缩小 */
+  .fc-suit-badge{font-size:10px;padding:1px 4px}
+  .fc-suit-badge span{font-size:9px}
+
+  /* 底部导航文字缩小 */
+  .tabbar div span{font-size:9px}
+  .tabbar div{font-size:16px;padding:6px 0 5px}
+
+  /* 打卡闯关子 tab */
+  .cc-subtabs button{font-size:13px;padding:9px 0}
+
+  /* 商城奖品卡片缩小 */
+  .mprize{padding:10px 8px}
+  .mp-name{font-size:13px}
+  .mp-desc{font-size:10px}
+
+  /* 领养/图鉴网格保持两列但缩小间距 */
+  .adopt-grid{gap:6px}
+  .species-grid{gap:6px}
+  .food-grid{gap:6px}
+
+  /* 弹窗宽度适配 */
+  .modal-card{padding:16px;width:92%;max-width:none}
+
+  /* 页面内边距缩小 */
+  .page{padding:10px}
+  .card{padding:12px}
+}
+
+/* 超小屏（≤340px）：额外压缩 */
+@media (max-width:340px){
+  .hero-streak .num{font-size:30px}
+  .hero-sub{font-size:11px}
+  .pet-subtabs button{font-size:11px;padding:7px 8px}
+  .tabbar div span{font-size:8px}
+  .tabbar div{font-size:14px}
+  .quick .q{font-size:11px;padding:10px 0}
+  .quick .qi{font-size:22px}
+}
+
+/* 安全区适配：防止底部导航被 iOS _home indicator_ 遮挡 */
+@supports (padding-bottom: env(safe-area-inset-bottom)){
+  #app{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  .tabbar{padding-bottom:env(safe-area-inset-bottom)}
+}
