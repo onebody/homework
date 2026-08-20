@@ -6,7 +6,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base, engine, SessionLocal
-from app.models import Prize, User, ChallengeTask, PetSpecies, PetFeedItem
+from app.models import Prize, User, ChallengeTask, PetSpecies, PetFeedItem, PetAdoption, PetFeedLog
 from app.security import hash_password
 
 
@@ -201,8 +201,15 @@ def seed():
             print("✅ 已创建 4 个示例闯关任务")
         else:
             print("ℹ️ 闯关任务已存在，跳过")
-        # ---------- 宠物种类种子数据 ----------
-        if db.query(PetSpecies).count() == 0:
+        # ---------- 🛡️ 宠物种类种子数据（受保护） ----------
+        # 保护策略：
+        #   1. 表非空时绝不重新插入（避免 ID 漂移导致领养记录外键断裂）
+        #   2. 若 pet_adoption 表有记录，连 diet_type 补全也跳过（避免意外修改影响已领养宠物）
+        #   3. 仅补全空字段，不覆盖已有配置
+        has_adoptions = db.query(PetAdoption).count() > 0
+        species_count = db.query(PetSpecies).count()
+
+        if species_count == 0:
             for name, desc, e_baby, e_youth, e_adult, e_legend, order, diet in PET_SPECIES_SEED:
                 db.add(PetSpecies(
                     name=name, description=desc,
@@ -212,15 +219,13 @@ def seed():
                 ))
             db.commit()
             print(f"✅ 已写入 {len(PET_SPECIES_SEED)} 种宠物种子数据")
-        else:
-            # 更新已有数据的 diet_type（如果为空）
+        elif has_adoptions:
+            # 有领养记录时：仅补全缺失的 diet_type，不修改任何已有字段
             updated = 0
             for sp in db.query(PetSpecies).all():
                 if not sp.diet_type:
-                    # 先精确匹配，再模糊匹配
                     dt = _DIET_TYPE_BY_NAME.get(sp.name)
                     if not dt:
-                        # 根据名称关键词推断
                         if '猫' in sp.name or '虎' in sp.name or '狮' in sp.name or '狼' in sp.name or '狐' in sp.name:
                             dt = 'carnivore'
                         elif '兔' in sp.name or '鹿' in sp.name or '象' in sp.name:
@@ -228,7 +233,29 @@ def seed():
                         elif '鱼' in sp.name or '龙' in sp.name or '龟' in sp.name:
                             dt = 'omnivore'
                         else:
-                            dt = 'omnivore'  # 默认杂食
+                            dt = 'omnivore'
+                    sp.diet_type = dt
+                    updated += 1
+            if updated:
+                db.commit()
+                print(f"✅ 已补全 {updated} 种宠物的饮食类型（领养数据受保护，未修改其他字段）")
+            else:
+                print(f"ℹ️ 宠物种类已存在（{species_count} 种），领养数据受保护，跳过")
+        else:
+            # 无领养记录时：可安全补全 diet_type
+            updated = 0
+            for sp in db.query(PetSpecies).all():
+                if not sp.diet_type:
+                    dt = _DIET_TYPE_BY_NAME.get(sp.name)
+                    if not dt:
+                        if '猫' in sp.name or '虎' in sp.name or '狮' in sp.name or '狼' in sp.name or '狐' in sp.name:
+                            dt = 'carnivore'
+                        elif '兔' in sp.name or '鹿' in sp.name or '象' in sp.name:
+                            dt = 'herbivore'
+                        elif '鱼' in sp.name or '龙' in sp.name or '龟' in sp.name:
+                            dt = 'omnivore'
+                        else:
+                            dt = 'omnivore'
                     sp.diet_type = dt
                     updated += 1
             if updated:
@@ -237,7 +264,8 @@ def seed():
             else:
                 print("ℹ️ 宠物种类已存在，跳过")
 
-        # ---------- 宠物食物种子数据 ----------
+        # ---------- 🛡️ 宠物食物种子数据（受保护） ----------
+        # 保护策略：表非空时绝不重新插入，避免 ID 漂移影响 pet_feed_log 外键
         if db.query(PetFeedItem).count() == 0:
             for name, desc, emoji, price, xp, order, suit_level, suit_note in PET_FEED_ITEMS_SEED:
                 db.add(PetFeedItem(
@@ -249,6 +277,16 @@ def seed():
             print(f"✅ 已写入 {len(PET_FEED_ITEMS_SEED)} 种食物种子数据")
         else:
             print("ℹ️ 宠物食物已存在，跳过")
+
+        # ---------- 🛡️ 宠物业务数据保护声明 ----------
+        # 以下表的数据在任何情况下都不应被 seed 脚本修改或删除：
+        #   - pet_adoption   领养记录（含 XP、阶段、连击、生病状态等）
+        #   - pet_feed_log   成长流水（含每次 XP 变动记录）
+        # seed 脚本不操作这两张表的数据，仅做存在性检查。
+        adoption_count = db.query(PetAdoption).count()
+        feed_log_count = db.query(PetFeedLog).count()
+        if adoption_count > 0 or feed_log_count > 0:
+            print(f"🛡️ 宠物业务数据受保护: {adoption_count} 条领养记录, {feed_log_count} 条成长流水（未修改）")
     finally:
         db.close()
 

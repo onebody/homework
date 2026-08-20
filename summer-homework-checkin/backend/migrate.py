@@ -159,6 +159,40 @@ def backfill_bind_codes():
         print(f"  回填绑定码失败: {e}")
 
 
+def verify_pet_data_integrity():
+    """校验宠物系统核心数据表的完整性（部署后调用，确保数据未被意外清除）。
+
+    保护的核心业务表：
+    - pet_species        宠物种类配置（种子数据）
+    - pet_feed_items     宠物食物配置（种子数据）
+    - pet_adoption       领养记录（用户业务数据，绝不可丢失）
+    - pet_feed_log       成长流水（用户业务数据，绝不可丢失）
+    """
+    if not os.path.exists(DB_PATH):
+        return
+    import sqlite3
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        existing = {r[0] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        conn.close()
+
+        # 必须存在的宠物表
+        required_tables = ['pet_species', 'pet_feed_items', 'pet_adoption', 'pet_feed_log']
+        missing = [t for t in required_tables if t not in existing]
+        if missing:
+            print(f"[DATA INTEGRITY WARNING] pet tables missing: {missing}")
+            print("  These tables contain user adoption records, growth progress,")
+            print("  XP, streaks etc. that CANNOT be recovered!")
+            print("  Please check if migration scripts executed correctly.")
+        else:
+            print("[OK] Pet data integrity check passed (4 core tables exist)")
+    except Exception as e:
+        print(f"[WARN] Pet data integrity check error (non-blocking): {e}")
+
+
 def main():
     args = sys.argv[1:]
 
@@ -179,6 +213,7 @@ def main():
     run_migrations()
     backfill_bind_codes()
     run_seed()
+    verify_pet_data_integrity()
     print("🚀 数据库准备就绪")
 
 

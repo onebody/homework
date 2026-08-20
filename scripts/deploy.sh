@@ -46,6 +46,98 @@ log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# ---- 宠物数据完整性校验 ----
+# 核心业务数据表（部署时绝不可丢失）：
+#   pet_species      - 宠物种类配置（种子数据）
+#   pet_feed_items   - 宠物食物配置（种子数据）
+#   pet_adoption     - 领养记录（含 XP、阶段、连击、生病状态）
+#   pet_feed_log     - 成长流水（每次 XP 变动记录）
+# 这些表的数据在部署/更新时必须保留，不得被迁移或种子脚本清除。
+check_pet_data_integrity() {
+    local target="$1"  # "local" or "remote"
+    local cmd_prefix=""
+    if [[ "$target" == "remote" ]]; then
+        cmd_prefix="rexec"
+    fi
+
+    log_info "校验宠物核心数据表完整性..."
+    local check_script='
+import sqlite3, os
+db = os.environ.get("DB_PATH", "/data/app.db")
+if not os.path.exists(db):
+    print("DB_NOT_FOUND"); exit()
+c = sqlite3.connect(db).cursor()
+tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type=\"table\"").fetchall()}
+required = ["pet_species", "pet_feed_items", "pet_adoption", "pet_feed_log"]
+missing = [t for t in required if t not in tables]
+if missing:
+    print("MISSING:" + ",".join(missing))
+else:
+    counts = []
+    for t in required:
+        n = c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        counts.append(f"{t}={n}")
+    print("OK:" + "|".join(counts))
+c.close()
+'
+    local result=""
+    if [[ "$target" == "local" ]]; then
+        result=$(docker exec -i summer-homework python3 << 'PYEOF'
+import sqlite3, os
+db = os.environ.get("DB_PATH", "/data/app.db")
+if not os.path.exists(db):
+    print("DB_NOT_FOUND"); exit()
+c = sqlite3.connect(db).cursor()
+tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+required = ["pet_species", "pet_feed_items", "pet_adoption", "pet_feed_log"]
+missing = [t for t in required if t not in tables]
+if missing:
+    print("MISSING:" + ",".join(missing))
+else:
+    counts = []
+    for t in required:
+        n = c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        counts.append(f"{t}={n}")
+    print("OK:" + "|".join(counts))
+c.close()
+PYEOF
+)
+    elif [[ "$target" == "remote" ]]; then
+        # 远程环境：通过容器启动时 migrate.py 的日志输出验证（已在步骤 9 显示）
+        # 此处仅确认日志中包含完整性校验通过标记
+        result=$(rexec "docker logs summer-homework 2>&1 | grep -o 'Pet data integrity check passed' | head -1" 2>/dev/null || echo "")
+        if [[ "$result" == *"passed"* ]]; then
+            result="OK:verified_via_container_log"
+        else
+            result="WARN:not_verified"
+        fi
+    fi
+
+    if [[ "$result" == "DB_NOT_FOUND"* ]]; then
+        log_warn "数据库文件不存在（首次部署？），跳过宠物数据校验"
+    elif [[ "$result" == "MISSING:"* ]]; then
+        log_error "🛡️ 宠物核心数据表缺失: ${result#MISSING:}"
+        log_error "这些表包含领养记录、XP经验值、连击次数等不可恢复数据！"
+        log_error "请立即检查迁移脚本是否正确执行。"
+        if [[ "$target" == "remote" ]]; then
+            log_error "排查: ssh $DEPLOY_SSH_HOST \"docker logs summer-homework\""
+        fi
+    elif [[ "$result" == "OK:"* ]]; then
+        local data="${result#OK:}"
+        if [[ "$data" == "verified_via_container_log" ]]; then
+            log_info "🛡️ 宠物数据完整性校验通过（经容器启动日志确认）"
+        else
+            log_info "🛡️ 宠物数据完整性校验通过:"
+            IFS='|' read -ra PARTS <<< "$data"
+            for part in "${PARTS[@]}"; do
+                log_info "  $part"
+            done
+        fi
+    else
+        log_warn "宠物数据校验异常（不影响部署流程）: $result"
+    fi
+}
+
 # ---- 本地部署 ----
 deploy_local() {
     log_info "===== 本地 Docker 增量更新 ====="
@@ -79,6 +171,9 @@ deploy_local() {
         log_error "本地服务验证失败，请检查日志: docker logs summer-homework"
         exit 1
     fi
+
+    # 4. 校验宠物核心数据表完整性
+    check_pet_data_integrity "local"
 
     log_info "===== 本地增量更新完成 ====="
     log_info "查看迁移日志: docker logs summer-homework | head -20"
@@ -316,6 +411,9 @@ EOS
     rexec "docker logs summer-homework 2>&1 | head -15" || true
     log_info "镜像一致性校验（两行应相同）:"
     rexec "echo -n '  running: '; docker inspect summer-homework --format '{{.Image}}'; echo -n '  built:   '; docker inspect summer-homework-img --format '{{.Id}}'" || true
+
+    # 10. 校验宠物核心数据表完整性
+    check_pet_data_integrity "remote"
 
     log_info "===== 生产增量更新完成 ====="
 }
