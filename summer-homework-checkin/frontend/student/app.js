@@ -315,7 +315,9 @@ const app = createApp({
       challengePhotoFile: null,
       challengeSubmitting: false,
       // 宠物乐园
-      pet: { has_pet: false, pet: null, active_pets_count: 0, max_pets: 3 },
+      pet: { has_pet: false, pet: null },
+      petActiveCount: 0,   // 独立于 pet 对象的计数信息，避免被 selectPet 覆盖
+      petMaxPets: 3,
       petList: [],  // 所有活跃宠物列表
       selectedPetId: null,  // 当前选中的宠物 ID（用于喂养/详情）
       petSpecies: [],
@@ -369,6 +371,12 @@ const app = createApp({
         transform: `rotate(${this.wheelRotation}deg)`,
         transition: this.wheelSpinning ? "transform 4s cubic-bezier(0.2,0.8,0.25,1)" : "none",
       };
+    },
+    canAdoptMore() {
+      return this.petActiveCount < this.petMaxPets;
+    },
+    petSlotsRemaining() {
+      return this.petMaxPets - this.petActiveCount;
     },
   },
   mounted() {
@@ -917,30 +925,30 @@ const app = createApp({
     async loadPetStatus() {
       try {
         const statusData = await this.api("/api/pet/status");
-        // 先保留计数信息，后续 loadPetList 会用到
-        const activeCount = statusData.active_pets_count || 0;
-        const maxPets = statusData.max_pets || 3;
+        // 计数信息存入独立属性，不依赖 this.pet 对象
+        this.petActiveCount = statusData.active_pets_count || 0;
+        this.petMaxPets = statusData.max_pets || 3;
 
         if (statusData.has_pet) {
           // 先加载完整宠物列表
           await this.loadPetList();
-          // 用列表数据同步计数（确保一致性）
-          this.pet.active_pets_count = activeCount;
-          this.pet.max_pets = maxPets;
+          // 将宠物详情写入 this.pet
+          this.pet = { has_pet: true, pet: statusData.pet };
           // 选中第一只宠物并同步 hero 卡片数据
           if (this.selectedPetId) {
             await this.selectPet(this.selectedPetId);
-            // selectPet 会替换 this.pet，需要重新写回计数
-            this.pet.active_pets_count = activeCount;
-            this.pet.max_pets = maxPets;
           }
         } else {
-          this.pet = statusData;
+          this.pet = { has_pet: false, pet: null };
           if (!this.petAdoptPaged.items.length) {
             await this.loadPetAdoptPaged(1);
           }
         }
-      } catch (e) { this.pet = { has_pet: false, pet: null, active_pets_count: 0, max_pets: 3 }; }
+      } catch (e) {
+        this.pet = { has_pet: false, pet: null };
+        this.petActiveCount = 0;
+        this.petMaxPets = 3;
+      }
     },
     async loadPetList() {
       try {
@@ -956,16 +964,12 @@ const app = createApp({
       this.selectedPetId = petId;
       try {
         const statusData = await this.api("/api/pet/status?pet_id=" + petId);
-        // 合并计数信息（status 接口始终返回最新的 active_pets_count / max_pets）
-        this.pet = statusData;
+        // 仅更新宠物详情，不动独立计数属性
+        this.pet = { has_pet: statusData.has_pet, pet: statusData.pet };
+        // 同步计数（status 接口始终返回最新值）
+        this.petActiveCount = statusData.active_pets_count || this.petActiveCount;
+        this.petMaxPets = statusData.max_pets || this.petMaxPets;
       } catch (e) { /* ignore */ }
-    },
-    get canAdoptMore() {
-      return this.pet && (this.pet.active_pets_count || 0) < (this.pet.max_pets || 3);
-    },
-    get petSlotsRemaining() {
-      if (!this.pet) return 3;
-      return (this.pet.max_pets || 3) - (this.pet.active_pets_count || 0);
     },
     async loadPetSpecies() {
       try {
