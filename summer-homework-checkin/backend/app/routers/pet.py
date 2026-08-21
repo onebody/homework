@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/pet", tags=["pet"])
 
+# 每用户最多可同时拥有的活跃宠物数量
+MAX_PETS_PER_USER = 3
+
 
 # ---------- 请求/响应模型 ----------
 
@@ -95,11 +98,16 @@ def adopt_pet(
     user: User = Depends(require_role("student")),
     db: Session = Depends(get_db),
 ):
-    """领养一只宠物（每用户同时只能有 1 只活跃宠物）。"""
-    # 检查是否已有活跃宠物
-    existing = get_active_pet(db, user.id)
-    if existing:
-        raise HTTPException(status_code=400, detail="你已有一只宠物，请先放弃当前宠物后再领养")
+    """领养一只宠物（每用户最多同时拥有 3 只活跃宠物）。"""
+    # 统计当前活跃宠物数量
+    active_count = db.query(PetAdoption).filter_by(
+        user_id=user.id, is_active=True
+    ).count()
+    if active_count >= MAX_PETS_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"您已拥有最大数量的宠物（{MAX_PETS_PER_USER} 只），请先放弃一只后再领养",
+        )
 
     # 检查种类是否存在且可领养
     species = db.query(PetSpecies).filter_by(id=req.species_id, status="on").first()
@@ -128,6 +136,8 @@ def adopt_pet(
 
     return {
         "message": f"成功领养 {species.name}！取个好名字吧~",
+        "active_pets_count": active_count + 1,
+        "max_pets": MAX_PETS_PER_USER,
         "pet": {
             "id": adoption.id,
             "species_id": species.id,
@@ -143,13 +153,24 @@ def adopt_pet(
 
 @router.get("/status")
 def pet_status(
+    pet_id: int = Query(None, description="指定宠物 ID，不传则返回第一只活跃宠物"),
     user: User = Depends(require_role("student")),
     db: Session = Depends(get_db),
 ):
-    """获取当前宠物状态（含种类信息、升级进度、生病状态、连击信息）。"""
-    pet = get_active_pet(db, user.id)
+    """获取当前宠物状态（含种类信息、升级进度、生病状态、连击信息）。
+    返回 active_pets_count / max_pets 供前端判断领养上限。"""
+    active_count = db.query(PetAdoption).filter_by(
+        user_id=user.id, is_active=True
+    ).count()
+
+    if pet_id:
+        pet = db.query(PetAdoption).filter_by(
+            id=pet_id, user_id=user.id, is_active=True
+        ).first()
+    else:
+        pet = get_active_pet(db, user.id)
     if not pet:
-        return {"has_pet": False, "pet": None}
+        return {"has_pet": False, "pet": None, "active_pets_count": active_count, "max_pets": MAX_PETS_PER_USER}
 
     species = pet.species
     stage = pet.current_stage
@@ -181,6 +202,8 @@ def pet_status(
 
     return {
         "has_pet": True,
+        "active_pets_count": active_count,
+        "max_pets": MAX_PETS_PER_USER,
         "pet": {
             "id": pet.id,
             "species_id": species.id,
@@ -247,28 +270,72 @@ def pet_feed_log(
     }
 
 
-@router.post("/abandon")
-def abandon_pet(
-    req: AbandonRequest,
+@router.get("/list")
+def pet_list(
     user: User = Depends(require_role("student")),
     db: Session = Depends(get_db),
 ):
-    """放弃当前宠物。"""
-    pet = get_active_pet(db, user.id)
-    if not pet:
-        raise HTTPException(status_code=400, detail="你当前没有宠物")
+    """获取用户所有活跃宠物列表。"""
+    pets = db.query(PetAdoption).filter_by(
+        user_id=user.id, is_active=True
+    ).order_by(PetAdoption.adopted_at.desc()).all()
 
+    return {
+        "active_pets": [
+            {
+                "id": p.id,
+                "species_id": p.species_id,
+                "species_name": p.species.name if p.species else "",
+                "nickname": p.nickname,
+                "emoji": get_stage_emoji(p.current_stage),
+                "current_xp": p.current_xp,
+                "current_stage": p.current_stage,
+                "stage_label": get_stage_label(p.current_stage),
+                "sick": is_pet_sick(p),
+                "perfect_streak": p.perfect_streak or 0,
+                "adopted_at": p.adopted_at.isoformat() if p.adopted_at else None,
+            }
+            for p in pets
+        ],
+        "active_pets_count": len(pets),
+        "max_pets": MAX_PETS_PER_USER,
+    }
+
+
+@router.post("/abandon")
+def abandon_pet(
+    req: AbandonRequest,
+    pet_id: int = Query(None, description="要放弃的宠物 ID，不传则放弃唯一的活跃宠物"),
+    user: User = Depends(require_role("student")),
+    db: Session = Depends(get_db),
+):
+    """放弃指定宠物（支持多宠物场景）。"""
+    if pet_id:
+        pet = db.query(PetAdoption).filter_by(
+            id=pet_id, user_id=user.id, is_active=True
+        ).first()
+    else:
+        pet = get_active_pet(db, user.id)
+    if not pet:
+        raise HTTPException(status_code=400, detail="你当前没有该宠物")
+
+    pet_name = pet.nickname
     pet.is_active = False
     pet.abandoned_at = now_local()
 
-    # 清空 User 冗余字段
-    user.pet_id = None
-    user.pet_level = None
-    user.pet_xp = 0
+    # 如果放弃的是 User 冗余字段关联的宠物，清空
+    if user.pet_id == pet.id:
+        user.pet_id = None
+        user.pet_level = None
+        user.pet_xp = 0
 
     db.commit()
 
-    return {"message": "已放弃宠物，你可以重新领养一只新的宠物"}
+    remaining = db.query(PetAdoption).filter_by(
+        user_id=user.id, is_active=True
+    ).count()
+
+    return {"message": f"已放弃 {pet_name}，你还可以领养 {MAX_PETS_PER_USER - remaining} 只宠物"}
 
 
 # ---------- 食物商店 + 喂养 ----------

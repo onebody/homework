@@ -315,7 +315,9 @@ const app = createApp({
       challengePhotoFile: null,
       challengeSubmitting: false,
       // 宠物乐园
-      pet: { has_pet: false, pet: null },
+      pet: { has_pet: false, pet: null, active_pets_count: 0, max_pets: 3 },
+      petList: [],  // 所有活跃宠物列表
+      selectedPetId: null,  // 当前选中的宠物 ID（用于喂养/详情）
       petSpecies: [],
       petFeedLog: [],
       petFeedPg: { page: 1, pages: 1, total: 0 },
@@ -915,10 +917,36 @@ const app = createApp({
     async loadPetStatus() {
       try {
         this.pet = await this.api("/api/pet/status");
-        if (!this.pet.has_pet && !this.petAdoptPaged.items.length) {
+        if (this.pet.has_pet) {
+          await this.loadPetList();
+        } else if (!this.petAdoptPaged.items.length) {
           await this.loadPetAdoptPaged(1);
         }
-      } catch (e) { this.pet = { has_pet: false, pet: null }; }
+      } catch (e) { this.pet = { has_pet: false, pet: null, active_pets_count: 0, max_pets: 3 }; }
+    },
+    async loadPetList() {
+      try {
+        const d = await this.api("/api/pet/list");
+        this.petList = d.active_pets || [];
+        this.pet.active_pets_count = d.active_pets_count || 0;
+        this.pet.max_pets = d.max_pets || 3;
+        // 自动选中第一只宠物（如果未选中）
+        if (this.petList.length && !this.selectedPetId) {
+          this.selectedPetId = this.petList[0].id;
+        }
+      } catch (e) { this.petList = []; }
+    },
+    async selectPet(petId) {
+      this.selectedPetId = petId;
+      try {
+        this.pet = await this.api("/api/pet/status?pet_id=" + petId);
+      } catch (e) { /* ignore */ }
+    },
+    get canAdoptMore() {
+      return (this.pet.active_pets_count || 0) < (this.pet.max_pets || 3);
+    },
+    get petSlotsRemaining() {
+      return (this.pet.max_pets || 3) - (this.pet.active_pets_count || 0);
     },
     async loadPetSpecies() {
       try {
@@ -1042,19 +1070,24 @@ const app = createApp({
       } catch (e) { this.showToast(e.message); }
       finally { this.petBusy = false; }
     },
-    async doAbandon() {
-      if (!confirm("确定要放弃当前宠物吗？放弃后所有成长进度将丢失，且无法恢复。")) return;
+    async doAbandon(petId) {
+      const label = petId ? '选中的宠物' : '当前宠物';
+      if (!confirm(`确定要放弃${label}吗？放弃后所有成长进度将丢失，且无法恢复。`)) return;
       this.petBusy = true;
       try {
-        const d = await this.api("/api/pet/abandon", {
+        const url = petId ? `/api/pet/abandon?pet_id=${petId}` : '/api/pet/abandon';
+        const d = await this.api(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
         this.showToast(d.message || "已放弃宠物");
         this.petAdoptForm.species_id = 0;
+        this.selectedPetId = null;
         await this.loadPetStatus();
-        await this.loadPetAdoptPaged(1);
+        if (!this.pet.has_pet) {
+          await this.loadPetAdoptPaged(1);
+        }
       } catch (e) { this.showToast(e.message); }
       finally { this.petBusy = false; }
     },

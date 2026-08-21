@@ -476,3 +476,27 @@ button{font-family:inherit;cursor:pointer;border:none}
   #app{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
   .tabbar{padding-bottom:env(safe-area-inset-bottom)}
 }
+
+/* ===== 多宠物列表样式 ===== */
+.pet-list-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.pet-list-header h3{margin:0;font-size:16px}
+.pet-count-badge{background:#e8f5e9;color:#2e7d32;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:600;margin-left:6px}
+
+.pet-mini-list{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+.pet-mini-card{flex:none;min-width:90px;background:#f8f9fa;border:2px solid transparent;border-radius:12px;padding:10px 8px;text-align:center;cursor:pointer;transition:all .2s}
+.pet-mini-card:active{transform:scale(.96)}
+.pet-mini-card.active{border-color:#4caf50;background:#e8f5e9}
+.pmc-emoji{font-size:28px;line-height:1.2}
+.pmc-name{font-size:12px;font-weight:600;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px}
+.pmc-stage{font-size:10px;color:#666;margin-top:2px}
+.pmc-xp{font-size:10px;color:#ff9800;margin-top:2px}
+.pmc-streak{font-size:10px;color:#f44336;margin-top:2px}
+
+/* 宠物管理列表 */
+.manage-pet-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.manage-pet-row{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f8f9fa;border-radius:10px}
+.mpr-emoji{font-size:24px}
+.mpr-name{font-weight:600;font-size:14px;flex:1}
+.mpr-stage{font-size:12px;color:#666}
+.mpr-xp{font-size:12px;color:#ff9800;margin-right:8px}
+.ghost.danger-btn.sm{font-size:12px;padding:4px 10px}

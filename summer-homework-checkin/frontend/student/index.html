@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>暑假作业打卡平台</title>
-  <link rel="stylesheet" href="./student.css?v=20260820" />
+  <link rel="stylesheet" href="./student.css?v=20260821" />
   <!-- Vue 本地托管于 /vendor（随镜像打包，无外部 CDN 依赖）；相对路径兼容子路径部署；?v= 为版本号用于缓存刷新 -->
   <script src="./vendor/vue.global.prod.js?v=3.5.41"></script>
 </head>
@@ -307,7 +307,7 @@
         <div class="card center">
           <div style="font-size:64px">🥚</div>
           <h2>宠物乐园</h2>
-          <p class="muted">领养一只宠物，陪你一起成长！<br>每次打卡审核通过后，宠物会自动获得成长经验。</p>
+          <p class="muted">领养一只宠物，陪你一起成长！<br>每位同学最多可同时领养 <strong>3 只</strong>宠物。<br>每次打卡审核通过后，宠物会自动获得成长经验。</p>
         </div>
         <div class="card">
           <h3>🐾 选择宠物领养 <small class="muted">共 {{ petAdoptPaged.total }} 种</small></h3>
@@ -339,6 +339,27 @@
 
       <!-- 有宠物：展示页 -->
       <div v-else>
+        <!-- 宠物列表（多宠物支持） -->
+        <div class="card">
+          <div class="pet-list-header">
+            <h3>🐾 我的宠物 <span class="pet-count-badge">{{ pet.active_pets_count }}/{{ pet.max_pets }}</span></h3>
+            <button v-if="canAdoptMore" class="primary sm" @click="petSubTab='adopt'; loadPetAdoptPaged(1)">+ 领养更多</button>
+            <span v-else class="muted" style="font-size:12px">已达领养上限</span>
+          </div>
+          <div class="pet-mini-list">
+            <div class="pet-mini-card" v-for="p in petList" :key="p.id"
+                 :class="{active: selectedPetId === p.id}"
+                 @click="selectPet(p.id)">
+              <div class="pmc-emoji" v-if="!p.sick">{{ p.emoji }}</div>
+              <div class="pmc-emoji sick-pet" v-else>🤒</div>
+              <div class="pmc-name">{{ p.nickname }}</div>
+              <div class="pmc-stage">{{ p.stage_label }}</div>
+              <div class="pmc-xp">⭐{{ p.current_xp }} XP</div>
+              <div class="pmc-streak" v-if="p.perfect_streak >= 3">🔥×{{ p.perfect_streak }}</div>
+            </div>
+          </div>
+        </div>
+
         <!-- 宠物卡片 -->
         <div class="card center pet-hero">
           <div class="pet-emoji-big" v-if="!pet.pet.sick">{{ pet.pet.emoji }}</div>
@@ -392,6 +413,7 @@
           <button :class="{on: petSubTab==='log'}" @click="petSubTab='log'; loadPetFeedLog(1)">📜 成长记录</button>
           <button :class="{on: petSubTab==='feed'}" @click="petSubTab='feed'; loadPetFoods()">🍖 道具喂养</button>
           <button :class="{on: petSubTab==='species'}" @click="petSubTab='species'; loadPetSpeciesPaged(1)">📖 形态图鉴</button>
+          <button :class="{on: petSubTab==='adopt'}" @click="petSubTab='adopt'; loadPetAdoptPaged(1)" v-if="canAdoptMore">🥚 领养</button>
           <button :class="{on: petSubTab==='manage'}" @click="petSubTab='manage'">⚙️ 宠物管理</button>
         </div>
 
@@ -483,11 +505,47 @@
           <pager :page="petSpeciesPaged.page" :pages="petSpeciesPaged.pages" :total="petSpeciesPaged.total" @go="loadPetSpeciesPaged"></pager>
         </div>
 
+        <!-- 领养更多 -->
+        <div class="card" v-show="petSubTab==='adopt'">
+          <h3>🥚 领养更多宠物 <small class="muted">还可领养 {{ petSlotsRemaining }} 只</small></h3>
+          <div class="adopt-grid">
+            <div class="adopt-card" v-for="s in petAdoptPaged.items" :key="s.id"
+                 :class="{selected: petAdoptForm.species_id === s.id}"
+                 @click="petAdoptForm.species_id = s.id">
+              <div class="ac-emoji">{{ s.emoji_baby }}</div>
+              <div class="ac-name">{{ s.name }}</div>
+              <div class="ac-desc">{{ s.description }}</div>
+              <div class="ac-stages">
+                <span>{{ s.emoji_baby }}幼</span>
+                <span>{{ s.emoji_youth }}少</span>
+                <span>{{ s.emoji_adult }}成</span>
+                <span>{{ s.emoji_legend }}传</span>
+              </div>
+            </div>
+          </div>
+          <p class="muted" v-if="!petAdoptPaged.items.length">暂无可领养的宠物</p>
+          <pager :page="petAdoptPaged.page" :pages="petAdoptPaged.pages" :total="petAdoptPaged.total" @go="loadPetAdoptPaged" v-if="petAdoptPaged.items.length"></pager>
+          <label v-if="petAdoptPaged.items.length">给宠物起个昵称（可选）
+            <input v-model="petAdoptForm.nickname" placeholder="默认使用种类名称" maxlength="32" />
+          </label>
+          <button class="primary big" :disabled="petBusy || !petAdoptPaged.items.length" @click="doAdopt">
+            {{ petBusy ? '领养中…' : '🐾 确认领养' }}
+          </button>
+        </div>
+
         <!-- 宠物管理 -->
         <div class="card" v-show="petSubTab==='manage'">
           <h3>⚙️ 宠物管理</h3>
-          <p class="muted">放弃当前宠物后，所有成长进度将丢失，你可以重新领养一只新宠物。</p>
-          <button class="ghost danger-btn" :disabled="petBusy" @click="doAbandon">🚫 放弃宠物</button>
+          <p class="muted">放弃宠物后，该宠物的所有成长进度将丢失，你可以重新领养新宠物。</p>
+          <div class="manage-pet-list">
+            <div class="manage-pet-row" v-for="p in petList" :key="p.id">
+              <span class="mpr-emoji">{{ p.emoji }}</span>
+              <span class="mpr-name">{{ p.nickname }}</span>
+              <span class="mpr-stage">{{ p.stage_label }}</span>
+              <span class="mpr-xp">⭐{{ p.current_xp }} XP</span>
+              <button class="ghost danger-btn sm" :disabled="petBusy" @click="doAbandon(p.id)">放弃</button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -638,6 +696,6 @@
 </div>
 
 <!-- 替换弹窗依赖全局样式 .modal/.modal-card，定义在 student.css -->
-<script src="./app.js?v=20260820"></script>
+<script src="./app.js?v=20260821"></script>
 </body>
 </html>
