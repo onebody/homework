@@ -342,7 +342,7 @@
         <!-- 宠物列表（多宠物支持） -->
         <div class="card">
           <div class="pet-list-header">
-            <h3>🐾 我的宠物 <span class="pet-count-badge">{{ pet.active_pets_count }}/{{ pet.max_pets }}</span></h3>
+            <h3>🐾 我的宠物 <span class="pet-count-badge">{{ pet.active_pets_count || 0 }}/{{ pet.max_pets || 3 }}</span></h3>
             <button v-if="canAdoptMore" class="primary sm" @click="petSubTab='adopt'; loadPetAdoptPaged(1)">+ 领养更多</button>
             <span v-else class="muted" style="font-size:12px">已达领养上限</span>
           </div>

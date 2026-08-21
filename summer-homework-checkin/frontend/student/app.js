@@ -943,9 +943,10 @@ const app = createApp({
       } catch (e) { /* ignore */ }
     },
     get canAdoptMore() {
-      return (this.pet.active_pets_count || 0) < (this.pet.max_pets || 3);
+      return this.pet && (this.pet.active_pets_count || 0) < (this.pet.max_pets || 3);
     },
     get petSlotsRemaining() {
+      if (!this.pet) return 3;
       return (this.pet.max_pets || 3) - (this.pet.active_pets_count || 0);
     },
     async loadPetSpecies() {
