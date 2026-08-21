@@ -37,6 +37,10 @@ class AbandonRequest(BaseModel):
     reason: str = ""
 
 
+class RenameRequest(BaseModel):
+    nickname: str
+
+
 class FeedRequest(BaseModel):
     food_id: int
     quantity: int = 1
@@ -174,7 +178,9 @@ def pet_status(
 
     species = pet.species
     stage = pet.current_stage
-    emoji = get_stage_emoji(stage)
+    # 使用种类专属 emoji（而非硬编码默认值）
+    _stage_emoji_attr = {"baby": "emoji_baby", "youth": "emoji_youth", "adult": "emoji_adult", "legend": "emoji_legend"}
+    emoji = getattr(species, _stage_emoji_attr.get(stage, "emoji_baby"), None) or get_stage_emoji(stage)
     label = get_stage_label(stage)
 
     # 计算下一阶段所需 XP
@@ -280,6 +286,9 @@ def pet_list(
         user_id=user.id, is_active=True
     ).order_by(PetAdoption.adopted_at.desc()).all()
 
+    # 在 list 构建之前定义阶段 emoji 映射
+    _stage_emoji_attr = {"baby": "emoji_baby", "youth": "emoji_youth", "adult": "emoji_adult", "legend": "emoji_legend"}
+
     return {
         "active_pets": [
             {
@@ -287,7 +296,7 @@ def pet_list(
                 "species_id": p.species_id,
                 "species_name": p.species.name if p.species else "",
                 "nickname": p.nickname,
-                "emoji": get_stage_emoji(p.current_stage),
+                "emoji": getattr(p.species, _stage_emoji_attr.get(p.current_stage, "emoji_baby"), None) or get_stage_emoji(p.current_stage),
                 "current_xp": p.current_xp,
                 "current_stage": p.current_stage,
                 "stage_label": get_stage_label(p.current_stage),
@@ -336,6 +345,36 @@ def abandon_pet(
     ).count()
 
     return {"message": f"已放弃 {pet_name}，你还可以领养 {MAX_PETS_PER_USER - remaining} 只宠物"}
+
+
+@router.post("/rename")
+def rename_pet(
+    req: RenameRequest,
+    pet_id: int = Query(None, description="要改名的宠物 ID，不传则对唯一活跃宠物改名"),
+    user: User = Depends(require_role("student")),
+    db: Session = Depends(get_db),
+):
+    """修改已领养宠物的昵称。"""
+    new_name = req.nickname.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="昵称不能为空")
+    if len(new_name) > 32:
+        raise HTTPException(status_code=400, detail="昵称最多 32 个字符")
+
+    if pet_id:
+        pet = db.query(PetAdoption).filter_by(
+            id=pet_id, user_id=user.id, is_active=True
+        ).first()
+    else:
+        pet = get_active_pet(db, user.id)
+    if not pet:
+        raise HTTPException(status_code=400, detail="未找到该宠物")
+
+    old_name = pet.nickname
+    pet.nickname = new_name
+    db.commit()
+
+    return {"message": f"已将「{old_name}」改名为「{new_name}」", "nickname": new_name}
 
 
 # ---------- 食物商店 + 喂养 ----------

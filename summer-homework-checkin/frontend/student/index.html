@@ -540,10 +540,18 @@
           <div class="manage-pet-list">
             <div class="manage-pet-row" v-for="p in petList" :key="p.id">
               <span class="mpr-emoji">{{ p.emoji }}</span>
-              <span class="mpr-name">{{ p.nickname }}</span>
-              <span class="mpr-stage">{{ p.stage_label }}</span>
-              <span class="mpr-xp">⭐{{ p.current_xp }} XP</span>
-              <button class="ghost danger-btn sm" :disabled="petBusy" @click="doAbandon(p.id)">放弃</button>
+              <template v-if="renamePetId === p.id">
+                <input class="rename-input" v-model="renameNewName" placeholder="输入新昵称" maxlength="32" @keyup.enter="doRename(p.id)" />
+                <button class="sm" @click="doRename(p.id)" :disabled="petBusy">确定</button>
+                <button class="ghost sm" @click="renamePetId=null">取消</button>
+              </template>
+              <template v-else>
+                <span class="mpr-name">{{ p.nickname }}</span>
+                <span class="mpr-stage">{{ p.stage_label }}</span>
+                <span class="mpr-xp">⭐{{ p.current_xp }} XP</span>
+                <button class="ghost sm" @click="openRename(p)" :disabled="petBusy">改名</button>
+                <button class="ghost danger-btn sm" :disabled="petBusy" @click="doAbandon(p.id)">放弃</button>
+              </template>
             </div>
           </div>
         </div>

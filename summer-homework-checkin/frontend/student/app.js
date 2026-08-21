@@ -325,6 +325,8 @@ const app = createApp({
       petFeedPg: { page: 1, pages: 1, total: 0 },
       petAdoptForm: { species_id: 0, nickname: "" },
       petBusy: false,
+      renamePetId: null,
+      renameNewName: '',
       petSubTab: "status",  // status | log | species
       petSpeciesPaged: { items: [], total: 0, page: 1, pages: 1 },
       petAdoptPaged: { items: [], total: 0, page: 1, pages: 1 },
@@ -1114,6 +1116,32 @@ const app = createApp({
       } catch (e) { this.showToast(e.message); }
       finally { this.petBusy = false; }
     },
+
+    openRename(pet) {
+      this.renamePetId = pet.id;
+      this.renameNewName = pet.nickname || '';
+    },
+
+    async doRename(petId) {
+      const name = this.renameNewName.trim();
+      if (!name) { this.showToast('昵称不能为空'); return; }
+      this.petBusy = true;
+      try {
+        const res = await this.api(`/api/pet/rename?pet_id=${petId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nickname: name }),
+        });
+        this.showToast(res.message || "改名成功");
+        this.renamePetId = null;
+        await this.loadPetList();
+        if (this.selectedPetId === petId) {
+          await this.selectPet(petId);
+        }
+      } catch (e) { this.showToast(e.message); }
+      finally { this.petBusy = false; }
+    },
+
     petStageEmoji(stage) {
       if (!this.pet.pet) return "🐾";
       const p = this.pet.pet;
