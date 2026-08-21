@@ -916,11 +916,29 @@ const app = createApp({
     /* ============ 宠物乐园 ============ */
     async loadPetStatus() {
       try {
-        this.pet = await this.api("/api/pet/status");
-        if (this.pet.has_pet) {
+        const statusData = await this.api("/api/pet/status");
+        // 先保留计数信息，后续 loadPetList 会用到
+        const activeCount = statusData.active_pets_count || 0;
+        const maxPets = statusData.max_pets || 3;
+
+        if (statusData.has_pet) {
+          // 先加载完整宠物列表
           await this.loadPetList();
-        } else if (!this.petAdoptPaged.items.length) {
-          await this.loadPetAdoptPaged(1);
+          // 用列表数据同步计数（确保一致性）
+          this.pet.active_pets_count = activeCount;
+          this.pet.max_pets = maxPets;
+          // 选中第一只宠物并同步 hero 卡片数据
+          if (this.selectedPetId) {
+            await this.selectPet(this.selectedPetId);
+            // selectPet 会替换 this.pet，需要重新写回计数
+            this.pet.active_pets_count = activeCount;
+            this.pet.max_pets = maxPets;
+          }
+        } else {
+          this.pet = statusData;
+          if (!this.petAdoptPaged.items.length) {
+            await this.loadPetAdoptPaged(1);
+          }
         }
       } catch (e) { this.pet = { has_pet: false, pet: null, active_pets_count: 0, max_pets: 3 }; }
     },
@@ -928,8 +946,6 @@ const app = createApp({
       try {
         const d = await this.api("/api/pet/list");
         this.petList = d.active_pets || [];
-        this.pet.active_pets_count = d.active_pets_count || 0;
-        this.pet.max_pets = d.max_pets || 3;
         // 自动选中第一只宠物（如果未选中）
         if (this.petList.length && !this.selectedPetId) {
           this.selectedPetId = this.petList[0].id;
@@ -939,7 +955,9 @@ const app = createApp({
     async selectPet(petId) {
       this.selectedPetId = petId;
       try {
-        this.pet = await this.api("/api/pet/status?pet_id=" + petId);
+        const statusData = await this.api("/api/pet/status?pet_id=" + petId);
+        // 合并计数信息（status 接口始终返回最新的 active_pets_count / max_pets）
+        this.pet = statusData;
       } catch (e) { /* ignore */ }
     },
     get canAdoptMore() {
