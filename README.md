@@ -40,40 +40,6 @@ uvicorn app.main:app --reload
 
 ---
 
-## 📦 points-system
-
-**打卡积分兑换奖品系统**
-
-一个独立的「打卡赚积分 → 积分兑换奖品 → 抽奖」功能模块。
-
-- **技术栈**：FastAPI + SQLAlchemy 2.0 + SQLite + 原生 HTML/JS
-- **特点**：无构建依赖，可独立运行，易于移植
-- **功能**：
-  - 每日打卡赚积分
-  - 积分兑换抽奖券
-  - 加权随机抽奖
-  - 完整积分流水对账
-  - 奖品管理与库存控制
-
-**快速启动**：
-```bash
-cd points-system/backend
-python seed.py
-python run.py
-```
-
-访问 http://127.0.0.1:8001
-
----
-
-## 🎮 2048 / snake-game
-
-纯前端 H5 游戏，即开即玩：
-- `2048/src/index.html` — 移动端 2048 数字合并游戏
-- `snake-game/index.html` — 贪吃蛇大冒险
-
----
-
 ## 📄 License
 
 MIT

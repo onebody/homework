@@ -1,20 +1,17 @@
 # 工作区阶段性总结报告
 
 > hanghang_WS 工作区 · 项目全周期总结
-> 更新时间：2026-08-20 · 主线版本：summer-homework-checkin v1.5.0（宠物乐园·食物适配性校验与生态反馈）
+> 更新时间：2026-08-24 · 主线版本：summer-homework-checkin v1.6.0（宠物乐园·多宠物领养 + 改名 + Emoji 修复）
 
 ---
 
 ## 一、工作区总览
 
-本工作区为家庭学习场景自研项目集合，涵盖 1 个核心业务系统、1 个配套积分系统与 2 个 H5 游戏，已完成从需求分析、架构设计、功能开发、安全加固到双环境部署上线的完整交付闭环。
+本工作区为家庭学习场景自研项目集合，以暑假作业打卡系统为核心，已完成从需求分析、架构设计、功能开发、安全加固到双环境部署上线的完整交付闭环。
 
 | 项目 | 定位 | 技术栈 | 仓库状态 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| summer-homework-checkin | 暑假作业打卡系统（核心） | FastAPI + SQLite + Vue3 | 入库 | ✅ 生产运行中 |
-| points-system | 打卡积分兑换系统 | FastAPI + SQLite + Vue3 | 入库 | ✅ 本地 Docker 运行 |
-| 2048 | 移动端 2048 数字合并游戏 | 原生 HTML5/CSS3/JS | 入库 | ✅ 即开即玩 |
-| snake-game | 贪吃蛇大冒险 H5 游戏 | 原生 JS 模块化 + Canvas | 不入库（.gitignore 排除） | ✅ 本地可玩 |
+| summer-homework-checkin | 暑假作业打卡系统（核心） | FastAPI + SQLite + Vue3 | 入库 | ✅ 双环境运行（本地+生产） |
 | homework-monorepo | 早期归档副本 | 同上 | 入库 | ⚠️ 归档，不再维护 |
 
 ---
@@ -38,6 +35,7 @@
 | v1.3.2 六期 · 安全深化 | 渗透测试 17 项全量整改、企微智能机器人（回调双向）、图片自动压缩、微信浏览器兼容、前端 CDN 本地化 | ✅ |
 | v1.4 七期 · 宠物乐园 | 宠物领养/喂养/成长/形态进化/图鉴/道具商店 | ✅ |
 | v1.5.0 八期 · 生态反馈 | 食物适配性校验、生病机制、连击加成、适配性矩阵、安全检测 9.2/10 | ✅ |
+| v1.6.0 九期 · 多宠物 | 多宠物领养（最多 3 只）、宠物改名、种类 Emoji 修复 | ✅ 最新 |
 
 **Alembic 迁移链**（当前 `012_pet_suitability`）：
 `001 初始 → 002 推送双向 → 003 北京时间治理 → 004 站点标语 → 005 闯关推送 → 006 推送模板 → 007 模板种子 → 008 站点积分 → 009 企微智能机器人 → 010 宠物系统 → 011 食物商店 → 012 适配性校验`
@@ -49,18 +47,6 @@
 - SSH 凭据安全：deploy.sh 改用 `sshpass -e` 环境变量传递，杜绝 argv 泄露；
 - 生产 `PRODUCTION=1` 关闭 /docs、/redoc、/openapi.json；
 - 速率限制、CORS 收窄、端口仅绑定 loopback、密钥文件权限收敛。
-
-### 2.2 points-system（积分兑换系统）
-
-打卡积分的独立兑换系统，FastAPI + Vue3 + SQLite，与主系统同一 Docker Compose 编排（本地直连 `127.0.0.1:8001`），同样完成容器安全加固（read_only + cap_drop + 资源限制）。前端纯静态三件套（index.html/app.js/styles.css），已随主系统完成部署链路验证。
-
-### 2.3 snake-game（贪吃蛇大冒险）
-
-纯前端 H5 游戏，模块化架构：`core`（GameEngine/Snake/Food/Collision）、`render`（CanvasRenderer）、`ui`（HUD/Menu/Settings/Leaderboard）、`data`（成就/存储）、`audio`，配 EventBus 解耦与 QA 测试脚本。按仓库卫生策略以 `.gitignore` 排除，不随业务代码入库。
-
-### 2.4 2048（移动端数字合并游戏）
-
-原生 HTML5 + CSS3 + JavaScript 零依赖实现：触屏滑动 + 键盘双操作、最高分持久化、合成动画、320–480px 响应式与横屏自适应。配套完整文档（项目章程 / PRD / 系统设计 / 测试计划与报告），已入库。
 
 ---
 
@@ -103,7 +89,16 @@
 - **单行配置表模式**（SiteConfig/PushConfig）：后台配置即改即生效，无需重启；
 - **异步推送解耦**：daemon 线程 + 独立会话，推送故障绝不影响打卡主链路；
 - **时区统一 naive 北京时间**：`timeutil.now_local()` 单一入口 + Dockerfile `TZ=Asia/Shanghai` 双保险；
-- **迁移优先于重建**：历史数据一律 Alembic 平移，升级零丢失。
+- 迁移优先于重建：历史数据一律 Alembic 平移，升级零丢失。
+
+### 3.7 项目精简（2026-08-24）
+
+为聚焦核心业务，已将以下独立项目从版本库移除（保留本地副本）：
+- `points-system/` — 积分兑换系统（功能已整合至主系统）
+- `2048/` — 2048 数字合并游戏
+- `snake-game/` — 贪吃蛇大冒险游戏
+
+上述项目已加入 `.gitignore`，不再随业务代码入库。
 
 ---
 
@@ -140,8 +135,7 @@ WAL 快照备份 → tar 管道传输代码（`COPYFILE_DISABLE=1` 防 AppleDoub
 | 3 | HTTPS 尚未启用（无域名，生产为 HTTP 内网访问） | 申请域名 + Let's Encrypt 证书，沿用已预备的 `nginx/https.conf.example` |
 | 4 | 人脸识别在无外网沙箱降级运行 | 生产环境联网后复验人脸链路，补充真实人脸样本回归 |
 | 5 | 本地 `venv` 损坏（直跑开发改用系统 python3） | 重建虚拟环境并同步 requirements |
-| 6 | snake-game 未入库、2048 与游戏类项目缺少部署入口 | 如需发布，可通过 GitHub Pages 或并入 nginx 导航页静态托管 |
-| 7 | 钉钉 Outgoing Token 回调需公网可达，内网部署下不可用 | 与 HTTPS/公网入口一并解决 |
+| 6 | 钉钉 Outgoing Token 回调需公网可达，内网部署下不可用 | 与 HTTPS/公网入口一并解决 |
 
 **后续优化方向**：前端构建化（Vite 打包替代 CDN 运行时，消除 `unsafe-eval`）、SQLite → PostgreSQL 演进评估（并发增长后）、管理后台操作审计日志、备份定期异地同步。
 
