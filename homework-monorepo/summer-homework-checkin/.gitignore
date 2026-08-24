@@ -1,8 +1,0 @@
-# 运行时生成，不纳入版本控制
-backend/app.db
-backend/uploads/*
-!backend/uploads/.gitkeep
-__pycache__/
-*.pyc
-venv/
-.env

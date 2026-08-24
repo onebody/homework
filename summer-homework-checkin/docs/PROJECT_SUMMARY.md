@@ -12,7 +12,6 @@
 | 项目 | 定位 | 技术栈 | 仓库状态 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | summer-homework-checkin | 暑假作业打卡系统（核心） | FastAPI + SQLite + Vue3 | 入库 | ✅ 双环境运行（本地+生产） |
-| homework-monorepo | 早期归档副本 | 同上 | 入库 | ⚠️ 归档，不再维护 |
 
 ---
 
@@ -94,9 +93,10 @@
 ### 3.7 项目精简（2026-08-24）
 
 为聚焦核心业务，已将以下独立项目从版本库移除（保留本地副本）：
-- `points-system/` — 积分兑换系统（功能已整合至主系统）
+- `points-system/` — 积分兑换系统
 - `2048/` — 2048 数字合并游戏
 - `snake-game/` — 贪吃蛇大冒险游戏
+- `homework-monorepo/` — 早期归档副本
 
 上述项目已加入 `.gitignore`，不再随业务代码入库。
 
@@ -131,11 +131,10 @@ WAL 快照备份 → tar 管道传输代码（`COPYFILE_DISABLE=1` 防 AppleDoub
 | # | 遗留问题 | 建议 |
 | --- | --- | --- |
 | 1 | CORS 白名单中公网来源 `http://115.206.235.46:7765` 当前探测不可达（疑似动态公网 IP 变化） | 确认最新公网 IP 后经 `DEPLOY_ALLOWED_ORIGINS` 更新；若已废弃则收窄白名单 |
-| 2 | `homework-monorepo/summer-homework-checkin` 归档副本前端仍引用 `unpkg.com` CDN | 明确废弃并删除，或同步 vendor 化；避免误部署旧副本 |
-| 3 | HTTPS 尚未启用（无域名，生产为 HTTP 内网访问） | 申请域名 + Let's Encrypt 证书，沿用已预备的 `nginx/https.conf.example` |
-| 4 | 人脸识别在无外网沙箱降级运行 | 生产环境联网后复验人脸链路，补充真实人脸样本回归 |
-| 5 | 本地 `venv` 损坏（直跑开发改用系统 python3） | 重建虚拟环境并同步 requirements |
-| 6 | 钉钉 Outgoing Token 回调需公网可达，内网部署下不可用 | 与 HTTPS/公网入口一并解决 |
+| 2 | HTTPS 尚未启用（无域名，生产为 HTTP 内网访问） | 申请域名 + Let's Encrypt 证书，沿用已预备的 `nginx/https.conf.example` |
+| 3 | 人脸识别在无外网沙箱降级运行 | 生产环境联网后复验人脸链路，补充真实人脸样本回归 |
+| 4 | 本地 `venv` 损坏（直跑开发改用系统 python3） | 重建虚拟环境并同步 requirements |
+| 5 | 钉钉 Outgoing Token 回调需公网可达，内网部署下不可用 | 与 HTTPS/公网入口一并解决 |
 
 **后续优化方向**：前端构建化（Vite 打包替代 CDN 运行时，消除 `unsafe-eval`）、SQLite → PostgreSQL 演进评估（并发增长后）、管理后台操作审计日志、备份定期异地同步。
 

@@ -2,6 +2,7 @@
 snake-game/
 points-system/
 2048/
+homework-monorepo/
 
 # ===== 安全：密钥/凭据/环境配置 一律不入库 =====
 .secret_key
