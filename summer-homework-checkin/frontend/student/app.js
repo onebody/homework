@@ -273,6 +273,8 @@ const app = createApp({
       bindForm: { child_username: "", bind_code: "" },
       bindBusy: false,
       token: localStorage.getItem("token") || "",
+      // 界面主题：default=简约经典；cartoon=卡通成长（偏好仅存本设备）
+      theme: localStorage.getItem("student_theme") || "default",
       user: {},
 
       // 双角色：家长登录后关联孩子账号
@@ -380,8 +382,30 @@ const app = createApp({
     petSlotsRemaining() {
       return this.petMaxPets - this.petActiveCount;
     },
+    // 成长之旅里程碑：纯前端由现有状态（pet/streak）派生，不新增后端接口
+    journeyMilestones() {
+      const p = this.pet.has_pet && this.pet.pet ? this.pet.pet : null;
+      const xp = p ? (p.current_xp || 0) : 0;
+      return [
+        { key: "start", icon: "🥚", title: "成长启程", desc: "领养第一只宠物，开启成长之旅！", done: !!this.pet.has_pet },
+        { key: "streak7", icon: "🌿", title: "坚持7天", desc: "连续打卡 7 天", done: (this.streak.longest_streak || 0) >= 7 },
+        { key: "youth", icon: "🌳", title: "少年形态", desc: "宠物累计经验达到 50 XP", done: xp >= 50 },
+        { key: "adult", icon: "🌲", title: "成年形态", desc: "宠物累计经验达到 150 XP", done: xp >= 150 },
+        { key: "checkin30", icon: "⛰️", title: "打卡30次", desc: "累计有效打卡 30 次", done: (this.streak.effective_checkins || 0) >= 30 },
+        { key: "legend", icon: "🏆", title: "传奇形态", desc: "宠物累计经验达到 300 XP，解锁最高荣誉", done: xp >= 300 },
+      ];
+    },
+    journeyDoneCount() {
+      return this.journeyMilestones.filter(m => m.done).length;
+    },
+    // 旅程地图按「最高目标在顶部」的顺序自上而下展示
+    journeyReversed() {
+      return this.journeyMilestones.slice().reverse();
+    },
   },
   mounted() {
+    // 同步主题属性（theme-boot.js 已在首帧前处理，此处兼作兜底）
+    this.setTheme(this.theme);
     this.loadSiteTitle();
     if (this.token) this.bootstrap();
   },
@@ -422,6 +446,17 @@ const app = createApp({
       this.toast = msg;
       clearTimeout(this.toastTimer);
       this.toastTimer = setTimeout(() => (this.toast = ""), 2200);
+    },
+    /* ============ 界面主题 ============ */
+    setTheme(t) {
+      this.theme = t;
+      try { localStorage.setItem("student_theme", t); } catch (e) { /* 忽略存储异常 */ }
+      if (t === "cartoon") document.documentElement.setAttribute("data-theme", "cartoon");
+      else document.documentElement.removeAttribute("data-theme");
+    },
+    toggleTheme() {
+      this.setTheme(this.theme === "cartoon" ? "default" : "cartoon");
+      this.showToast(this.theme === "cartoon" ? "已切换卡通成长主题 🎨" : "已切换简约经典主题");
     },
     async bootstrap() {
       try {
@@ -577,7 +612,7 @@ const app = createApp({
         effective_checkins: cs.effective_checkins, lottery_tickets: cs.lottery_tickets,
         points: cs.points, today_checked: cs.today_checked, can_makeup_this_month: 3,
       };
-      this.today = { today_checked: cs.today_checked, today_pending: cs.today_pending || false, pending_count: 0, can_makeup_this_month: 3 };
+      this.today = { today_checked: cs.today_checked, today_pending: cs.today_pending || false, pending_count: cs.today_pending ? 1 : 0, can_makeup_this_month: 3 };
     },
     onPhoto(e) {
       const f = e.target.files[0]; if (!f) return;

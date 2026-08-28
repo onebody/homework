@@ -1,0 +1,320 @@
+/* ==========================================================================
+   卡通成长主题（Cartoon Growth Theme）
+   所有规则均位于 html[data-theme="cartoon"] 作用域下，
+   对默认「简约经典」主题零污染；未开启时本文件不产生任何视觉效果。
+   视觉参考：蓝天云朵 + 草地山丘 + 奶油贴纸卡片 + 木质路牌 + 发光里程碑。
+   ========================================================================== */
+
+/* ---------- 调色板重映射 ---------- */
+[data-theme="cartoon"] {
+  --blue: #43a047;        /* 主色：草地绿 */
+  --blue-l: #e8f5e9;
+  --green: #43a047;
+  --orange: #ffb300;
+  --bg: #a8dcfa;
+  --ink: #5b4632;         /* 暖棕文字 */
+  --muted: #9b8871;
+  --card: #fffdf4;        /* 奶油卡片 */
+}
+
+/* ---------- 全局场景：蓝天 + 云朵 + 底部草地 ---------- */
+[data-theme="cartoon"] body {
+  background:
+    radial-gradient(circle 42px at 16% 84px, #ffffff 97%, transparent),
+    radial-gradient(circle 26px at 24% 70px, #ffffff 97%, transparent),
+    radial-gradient(circle 28px at 8% 72px, #ffffff 97%, transparent),
+    radial-gradient(circle 36px at 84% 170px, #ffffff 97%, transparent),
+    radial-gradient(circle 22px at 92% 156px, #ffffff 97%, transparent),
+    radial-gradient(circle 24px at 76% 158px, #ffffff 97%, transparent),
+    linear-gradient(0deg, #cdeab5 0%, rgba(205, 234, 181, 0) 160px),
+    linear-gradient(180deg, #79c4f5 0%, #a8dcfa 45%, #d8f0e2 100%);
+  background-attachment: fixed;
+}
+
+/* ---------- 登录页 ---------- */
+[data-theme="cartoon"] .auth-wrap {
+  background:
+    radial-gradient(circle 40px at 20% 12%, #ffffff 97%, transparent),
+    radial-gradient(circle 26px at 30% 9%, #ffffff 97%, transparent),
+    radial-gradient(circle 26px at 12% 9%, #ffffff 97%, transparent),
+    linear-gradient(0deg, #cdeab5 0%, rgba(205, 234, 181, 0) 30%),
+    linear-gradient(160deg, #79c4f5, #bfe3ff);
+}
+[data-theme="cartoon"] .auth-card {
+  background: var(--card);
+  border: 3px solid #f0e2c0;
+  border-radius: 28px;
+  box-shadow: 0 6px 0 rgba(190, 160, 110, .22), 0 16px 34px rgba(80, 150, 220, .28);
+}
+[data-theme="cartoon"] .auth-card h1 { color: var(--blue); }
+[data-theme="cartoon"] .tabs span.on { color: var(--blue); border-color: var(--orange); }
+[data-theme="cartoon"] .role-pick button { border-color: #eadfc2; border-radius: 999px; background: #fff; }
+[data-theme="cartoon"] .role-pick button.on { border-color: var(--blue); color: var(--blue); background: var(--blue-l); }
+
+/* ---------- 输入框 ---------- */
+[data-theme="cartoon"] input {
+  border-color: #eadfc2;
+  background: #fff;
+  border-radius: 16px;
+}
+[data-theme="cartoon"] input:focus { border-color: var(--orange); }
+[data-theme="cartoon"] .task-detail textarea { border-color: #eadfc2; border-radius: 16px; background: #fff; }
+[data-theme="cartoon"] .task-detail textarea:focus { border-color: var(--orange); }
+
+/* ---------- 按钮：糖果立体风 ---------- */
+[data-theme="cartoon"] .primary {
+  background: linear-gradient(180deg, #7ed957, #4caf50);
+  border-radius: 999px;
+  box-shadow: 0 4px 0 #2e7d32;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .12);
+}
+[data-theme="cartoon"] .primary:active { transform: translateY(2px); box-shadow: 0 2px 0 #2e7d32; }
+[data-theme="cartoon"] .primary:disabled { background: #c5c5c5; box-shadow: 0 4px 0 #9e9e9e; text-shadow: none; }
+[data-theme="cartoon"] .ghost {
+  border-radius: 999px;
+  border-color: var(--blue);
+  color: var(--blue);
+  background: #fff;
+}
+[data-theme="cartoon"] .mini { background: var(--blue-l); color: var(--blue); border-radius: 999px; }
+[data-theme="cartoon"] .qty-ctrl { background: #f4ead2; border-radius: 999px; }
+[data-theme="cartoon"] .qty-ctrl button { border-radius: 50%; }
+
+/* ---------- 顶栏：晴空 + 云 ---------- */
+[data-theme="cartoon"] .topbar {
+  background:
+    radial-gradient(circle 16px at 88% 10px, rgba(255, 255, 255, .55) 97%, transparent),
+    radial-gradient(circle 10px at 82% 18px, rgba(255, 255, 255, .55) 97%, transparent),
+    linear-gradient(135deg, #5ab6f0, #79c4f5);
+  border-radius: 0 0 22px 22px;
+  box-shadow: 0 4px 12px rgba(70, 150, 220, .3);
+}
+[data-theme="cartoon"] .topbar .ticket { background: rgba(255, 255, 255, .3); border-radius: 999px; }
+[data-theme="cartoon"] .theme-toggle { background: rgba(255, 255, 255, .3); }
+[data-theme="cartoon"] .theme-toggle:active { transform: scale(.9); }
+
+/* ---------- 孩子切换条 ---------- */
+[data-theme="cartoon"] .child-switch { background: rgba(255, 253, 244, .92); border-bottom: 2px dashed #eadfc2; }
+[data-theme="cartoon"] .child-switch span { border-color: #eadfc2; border-radius: 999px; background: #fff; }
+[data-theme="cartoon"] .child-switch span.on { background: var(--blue); border-color: var(--blue); }
+
+/* ---------- 卡片：奶油贴纸 ---------- */
+[data-theme="cartoon"] .card {
+  background: var(--card);
+  border: 3px solid #f0e2c0;
+  border-radius: 24px;
+  box-shadow: 0 5px 0 rgba(190, 160, 110, .18), 0 10px 22px rgba(120, 160, 220, .14);
+}
+[data-theme="cartoon"] .card h2 { color: var(--blue); }
+[data-theme="cartoon"] .modal-card {
+  background: var(--card);
+  border: 3px solid #f0e2c0;
+  border-radius: 24px;
+}
+
+/* ---------- 首页 hero：山丘草地 ---------- */
+[data-theme="cartoon"] .hero {
+  background:
+    radial-gradient(circle 20px at 88% 16px, rgba(255, 255, 255, .5) 97%, transparent),
+    linear-gradient(135deg, #a5d6a7, #66bb6a);
+  border: 3px solid #fff;
+  border-radius: 26px;
+  box-shadow: 0 6px 0 rgba(46, 125, 50, .25);
+}
+[data-theme="cartoon"] .quick .q {
+  background: var(--card);
+  border: 3px solid #f0e2c0;
+  border-radius: 20px;
+  box-shadow: 0 4px 0 rgba(190, 160, 110, .18);
+}
+[data-theme="cartoon"] .quick .q:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(190, 160, 110, .18); }
+
+/* ---------- 打卡区 ---------- */
+[data-theme="cartoon"] .uploader { border-color: #d9c9a5; border-radius: 20px; background: #fff; }
+[data-theme="cartoon"] .uploader.filled { border-color: var(--blue); }
+[data-theme="cartoon"] .switch-row { background: #f4ead2; border-radius: 999px; }
+[data-theme="cartoon"] .steps { color: var(--green); }
+[data-theme="cartoon"] .cc-subtabs { background: var(--card); border: 3px solid #f0e2c0; border-radius: 999px; padding: 5px; }
+[data-theme="cartoon"] .cc-subtabs button { border-radius: 999px; }
+[data-theme="cartoon"] .cc-subtabs button.on {
+  background: linear-gradient(180deg, #ffe082, #ffca28);
+  color: #6d4c13;
+  box-shadow: 0 3px 0 rgba(255, 143, 0, .35);
+}
+
+/* ---------- 任务卡片 ---------- */
+[data-theme="cartoon"] .task-item { background: #f4f9ee; border: 2px solid #dcead0; border-radius: 18px; }
+[data-theme="cartoon"] .task-points { border-radius: 999px; box-shadow: 0 2px 0 rgba(255, 143, 0, .3); }
+
+/* ---------- 商城 ---------- */
+[data-theme="cartoon"] .points-card {
+  background: linear-gradient(135deg, #ffe082, #ffca28);
+  border: 3px solid #fff;
+  box-shadow: 0 6px 0 rgba(255, 143, 0, .3);
+}
+[data-theme="cartoon"] .mprize { background: #f4f9ee; border: 2px solid #dcead0; border-radius: 18px; }
+[data-theme="cartoon"] .replace-item { background: #f4f9ee; border: 2px solid #dcead0; }
+
+/* ---------- 抽奖 ---------- */
+[data-theme="cartoon"] .lottery-card { background: linear-gradient(160deg, #fff8e1, #fffdf4); }
+[data-theme="cartoon"] .lottery-ticket-row { box-shadow: 0 4px 0 rgba(255, 143, 0, .3); }
+[data-theme="cartoon"] .wheel { border-color: #ffca28; }
+[data-theme="cartoon"] .wheel-center { border-color: var(--orange); color: #e65100; box-shadow: 0 4px 0 rgba(255, 143, 0, .4); }
+
+/* ---------- 记录行：虚线分隔 ---------- */
+[data-theme="cartoon"] .rec { border-bottom: 2px dashed #eadfc2; }
+[data-theme="cartoon"] .rec:last-of-type { border-bottom: none; }
+[data-theme="cartoon"] .child-item { border-bottom: 2px dashed #eadfc2; }
+
+/* ---------- 分页 ---------- */
+[data-theme="cartoon"] .pager button { background: #fff; border-color: #eadfc2; border-radius: 999px; }
+[data-theme="cartoon"] .pg-num.on { background: var(--blue); border-color: var(--blue); }
+
+/* ---------- 宠物乐园 ---------- */
+[data-theme="cartoon"] .pet-hero {
+  position: relative;
+  background: linear-gradient(180deg, #e3f6ff 0%, #dff2d8 55%, #c8eab8 100%);
+  border: 3px solid #fff;
+  border-radius: 26px;
+  overflow: hidden;
+}
+[data-theme="cartoon"] .pet-hero::before {
+  content: "✨";
+  position: absolute; top: 14px; left: 16px;
+  font-size: 18px;
+  animation: cartoon-twinkle 1.6s ease-in-out infinite;
+}
+[data-theme="cartoon"] .pet-hero::after {
+  content: "✨";
+  position: absolute; top: 26px; right: 18px;
+  font-size: 14px;
+  animation: cartoon-twinkle 1.6s .8s ease-in-out infinite;
+}
+[data-theme="cartoon"] .pet-emoji-big {
+  animation: cartoon-bounce 2.2s ease-in-out infinite;
+  filter: drop-shadow(0 6px 0 rgba(46, 125, 50, .18));
+}
+[data-theme="cartoon"] .pet-xp-bar-wrap { background: #f4ead2; border-radius: 999px; height: 16px; }
+[data-theme="cartoon"] .pet-xp-bar { background: linear-gradient(90deg, #ffd54f, #7ed957, #4fc3f7); border-radius: 999px; }
+[data-theme="cartoon"] .pet-stage-dot { border-radius: 16px; }
+[data-theme="cartoon"] .pet-stage-dot.active {
+  background: #fff8e1;
+  box-shadow: 0 0 0 3px rgba(255, 179, 0, .45), 0 4px 10px rgba(255, 143, 0, .25);
+}
+[data-theme="cartoon"] .pet-subtabs button { border-radius: 999px; border-color: #eadfc2; background: #fff; }
+[data-theme="cartoon"] .pet-subtabs button.on {
+  background: linear-gradient(180deg, #ffe082, #ffca28);
+  border-color: #ffb300;
+  color: #6d4c13;
+  box-shadow: 0 3px 0 rgba(255, 143, 0, .35);
+}
+[data-theme="cartoon"] .pet-mini-card { background: #fff; border: 2px solid #eadfc2; border-radius: 16px; }
+[data-theme="cartoon"] .pet-mini-card.active { border-color: var(--orange); background: #fff8e1; }
+[data-theme="cartoon"] .pet-count-badge { border-radius: 999px; }
+[data-theme="cartoon"] .manage-pet-row { background: #fff; border: 2px solid #eadfc2; border-radius: 14px; }
+
+/* 领养 / 图鉴 / 食物：贴纸卡片 */
+[data-theme="cartoon"] .adopt-card,
+[data-theme="cartoon"] .species-grid-card,
+[data-theme="cartoon"] .food-card {
+  background: var(--card);
+  border: 3px solid #eadfc2;
+  border-radius: 20px;
+}
+[data-theme="cartoon"] .adopt-card:active,
+[data-theme="cartoon"] .food-card:active { transform: scale(.96) rotate(-1deg); }
+[data-theme="cartoon"] .adopt-card.selected {
+  border-color: #ffb300;
+  background: #fff8e1;
+  box-shadow: 0 0 0 3px rgba(255, 179, 0, .35);
+}
+[data-theme="cartoon"] .fc-suit-badge { border-radius: 999px; }
+[data-theme="cartoon"] .sick-banner,
+[data-theme="cartoon"] .sick-block-banner,
+[data-theme="cartoon"] .fcb-warning { border-radius: 16px; }
+[data-theme="cartoon"] .diet-badge,
+[data-theme="cartoon"] .streak-badge { border-radius: 999px; }
+
+/* ---------- 成长之旅（旅程地图皮肤） ---------- */
+[data-theme="cartoon"] .journey {
+  position: relative;
+  padding: 16px 14px;
+  border-radius: 26px;
+  border: 3px solid #fff;
+  background:
+    radial-gradient(circle 26px at 88% 40px, rgba(255, 255, 255, .8) 97%, transparent),
+    radial-gradient(circle 16px at 78% 30px, rgba(255, 255, 255, .8) 97%, transparent),
+    linear-gradient(180deg, #9ed7f7 0%, #cdeccb 45%, #b7e0a6 100%);
+  box-shadow: 0 6px 0 rgba(46, 125, 50, .18), 0 12px 26px rgba(120, 160, 220, .18);
+  overflow: hidden;
+}
+[data-theme="cartoon"] .jh-avatar {
+  background: #fff8e7;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 3px rgba(255, 213, 79, .6);
+}
+[data-theme="cartoon"] .jh-bubble {
+  background: #fff8e7;
+  border: 2px solid #eadfc2;
+  box-shadow: 0 4px 10px rgba(120, 100, 60, .12);
+}
+[data-theme="cartoon"] .journey-path::before { border-left: 4px dotted #a5824f; left: 30px; }
+[data-theme="cartoon"] .jn-circle {
+  width: 64px; height: 64px;
+  border: 4px solid #fff;
+  background: radial-gradient(circle at 35% 30%, #ececec, #c9c9c9);
+}
+[data-theme="cartoon"] .journey-node.done .jn-circle {
+  background: radial-gradient(circle at 35% 30%, #dcedc8, #81c784);
+  box-shadow: 0 0 0 5px rgba(255, 213, 79, .75), 0 0 18px rgba(255, 213, 79, .85);
+}
+[data-theme="cartoon"] .journey-node.done .jn-circle::after {
+  content: "✨";
+  position: absolute; top: -8px; right: -10px;
+  font-size: 15px;
+  animation: cartoon-twinkle 1.6s ease-in-out infinite;
+}
+[data-theme="cartoon"] .jn-bubble {
+  background: #fff8e7;
+  border: 2px solid #eadfc2;
+  box-shadow: 0 4px 10px rgba(120, 100, 60, .12);
+}
+[data-theme="cartoon"] .journey-node.done .jn-bubble b { color: #2e7d32; }
+[data-theme="cartoon"] .journey-banner {
+  background: #fff8e7;
+  border: 3px solid #eadfc2;
+  border-radius: 20px;
+  box-shadow: 0 4px 0 rgba(190, 160, 110, .2);
+}
+[data-theme="cartoon"] .jb-star {
+  background: linear-gradient(180deg, #ffe082, #ffca28);
+  border-radius: 50%;
+  box-shadow: 0 2px 0 rgba(255, 143, 0, .35);
+}
+
+/* ---------- 底部导航：木质路牌 ---------- */
+[data-theme="cartoon"] .tabbar {
+  background: linear-gradient(180deg, #a97c50, #8a6d4a);
+  border-top: 4px solid #6d543a;
+}
+[data-theme="cartoon"] .tabbar div { color: #e8d9c0; }
+[data-theme="cartoon"] .tabbar div.on { color: #ffd54f; }
+[data-theme="cartoon"] .tabbar div.on span { color: #ffd54f; }
+
+/* ---------- 主题选择 ---------- */
+[data-theme="cartoon"] .theme-pick button { border-color: #eadfc2; border-radius: 999px; background: #fff; }
+[data-theme="cartoon"] .theme-pick button.on {
+  border-color: var(--orange);
+  color: #6d4c13;
+  background: linear-gradient(180deg, #ffe082, #ffca28);
+}
+
+/* ---------- 动画 ---------- */
+@keyframes cartoon-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes cartoon-twinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.8); }
+}

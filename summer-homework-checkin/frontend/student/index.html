@@ -4,7 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>暑假作业打卡平台</title>
-  <link rel="stylesheet" href="./student.css?v=20260821" />
+  <link rel="stylesheet" href="./student.css?v=20260828" />
+  <link rel="stylesheet" href="./student-cartoon.css?v=20260828" />
+  <!-- 主题预载：首帧前应用已保存的「卡通成长」主题防闪烁；CSP 禁止内联脚本，故为外部文件 -->
+  <script src="./theme-boot.js?v=20260828"></script>
   <!-- Vue 本地托管于 /vendor（随镜像打包，无外部 CDN 依赖）；相对路径兼容子路径部署；?v= 为版本号用于缓存刷新 -->
   <script src="./vendor/vue.global.prod.js?v=3.5.41"></script>
 </head>
@@ -39,7 +42,10 @@
   <template v-else>
     <header class="topbar">
       <span class="hi">Hi, {{ isParent ? '家长·' : '' }}{{ subjectName }}</span>
-      <span class="ticket">⭐ {{ points }} 积分</span>
+      <span class="topbar-right">
+        <span class="ticket">⭐ {{ points }} 积分</span>
+        <button class="theme-toggle" :title="theme==='cartoon' ? '切换为简约经典' : '切换为卡通成长'" @click="toggleTheme">{{ theme==='cartoon' ? '🌈' : '🎨' }}</button>
+      </span>
     </header>
 
     <!-- 家长：孩子切换 -->
@@ -254,6 +260,14 @@
         <button class="ghost" @click="openReport">📊 查看 / 下载学习报告</button>
       </div>
       <div class="card">
+        <h3>🎨 界面主题</h3>
+        <div class="theme-pick">
+          <button :class="{on: theme==='default'}" @click="setTheme('default')">简约经典</button>
+          <button :class="{on: theme==='cartoon'}" @click="setTheme('cartoon')">卡通成长</button>
+        </div>
+        <p class="muted tip">主题偏好仅保存在本设备，不影响功能与数据</p>
+      </div>
+      <div class="card">
         <h3>🔑 密码设置</h3>
         <template v-if="!showPwdForm">
           <button class="ghost" @click="showPwdForm=true">修改密码</button>
@@ -410,11 +424,36 @@
 
         <!-- 子 tab 切换 -->
         <div class="pet-subtabs">
+          <button :class="{on: petSubTab==='journey'}" @click="petSubTab='journey'">🗺️ 成长之旅</button>
           <button :class="{on: petSubTab==='log'}" @click="petSubTab='log'; loadPetFeedLog(1)">📜 成长记录</button>
           <button :class="{on: petSubTab==='feed'}" @click="petSubTab='feed'; loadPetFoods()">🍖 道具喂养</button>
           <button :class="{on: petSubTab==='species'}" @click="petSubTab='species'; loadPetSpeciesPaged(1)">📖 形态图鉴</button>
           <button :class="{on: petSubTab==='adopt'}" @click="petSubTab='adopt'; loadPetAdoptPaged(1)" v-if="canAdoptMore">🥚 领养</button>
           <button :class="{on: petSubTab==='manage'}" @click="petSubTab='manage'">⚙️ 宠物管理</button>
+        </div>
+
+        <!-- 成长之旅 -->
+        <div class="journey" v-show="petSubTab==='journey'">
+          <div class="journey-hero">
+            <div class="jh-avatar">{{ pet.pet && !pet.pet.sick ? pet.pet.emoji : '🥚' }}</div>
+            <div class="jh-bubble">
+              <b>你已经走了这么远啦！</b>
+              <span>{{ pet.pet.nickname }} 的成长之旅正在一点点变长 ✨ 已点亮 {{ journeyDoneCount }}/{{ journeyMilestones.length }} 个里程碑</span>
+            </div>
+          </div>
+          <div class="journey-path">
+            <div class="journey-node" v-for="m in journeyReversed" :key="m.key" :class="{done: m.done}">
+              <div class="jn-circle"><span v-if="m.done">{{ m.icon }}</span><span v-else class="jn-lock">🔒</span></div>
+              <div class="jn-bubble">
+                <b>{{ m.title }}</b>
+                <span>{{ m.desc }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="journey-banner">
+            <span class="jb-star">⭐</span>
+            <span>每完成一个目标，就相当于走过一段成长路、点亮一个新的地方！保持下去，下一个传奇形态就是你的！</span>
+          </div>
         </div>
 
         <!-- 成长记录 -->
@@ -704,6 +743,6 @@
 </div>
 
 <!-- 替换弹窗依赖全局样式 .modal/.modal-card，定义在 student.css -->
-<script src="./app.js?v=20260821"></script>
+<script src="./app.js?v=20260828b"></script>
 </body>
 </html>
