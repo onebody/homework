@@ -1,8 +1,9 @@
 from datetime import date, datetime, timedelta, timezone
+import random
 
 from fastapi import HTTPException
 
-from ..models import CheckIn, StudentParent, User
+from ..models import CheckIn, StudentParent, User, PetAdoption
 from ..config import MAX_MAKEUP_PER_MONTH, FACE_MODE_ON_ENROLLED, CHECKIN_POINTS, MAKEUP_POINTS
 from ..utils.storage import save_upload
 from .verification_service import verify_checkin
@@ -191,8 +192,13 @@ def approve_checkin(db, ci, note=None):
     recompute_and_grant(db, user)
     db.refresh(user)
 
-    # 宠物成长：打卡审核通过时自动为活跃宠物增加经验值
-    pet_result = pet_on_checkin_approved(db, user, ci)
+    # 宠物成长：打卡审核通过时自动为活跃宠物增加经验值。
+    # 多宠物场景：从活跃宠物中随机选取一只获得经验，避免始终只喂第一只。
+    active_pets = db.query(PetAdoption).filter_by(
+        user_id=user.id, is_active=True
+    ).all()
+    target_pet = random.choice(active_pets) if active_pets else None
+    pet_result = pet_on_checkin_approved(db, user, ci, pet=target_pet)
     db.commit()
     db.refresh(user)
 

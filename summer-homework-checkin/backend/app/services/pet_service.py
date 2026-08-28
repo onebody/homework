@@ -85,7 +85,7 @@ def get_active_pet(db, user_id: int) -> PetAdoption:
     ).first()
 
 
-def on_checkin_approved(db, user: User, checkin) -> dict:
+def on_checkin_approved(db, user: User, checkin, pet: PetAdoption = None) -> dict:
     """打卡审核通过时，自动为活跃宠物增加成长经验。
 
     由 checkin_service.approve_checkin() 在积分发放后调用，
@@ -95,12 +95,15 @@ def on_checkin_approved(db, user: User, checkin) -> dict:
         db: 数据库会话
         user: 当前用户 ORM 对象
         checkin: 审核通过的 CheckIn 记录
+        pet: 目标宠物（多宠物场景由调用方随机选取后传入）；
+             为 None 时回退为默认活跃宠物（兼容单宠物/旧调用）
 
     返回：
         dict: {"xp_gained": int, "stage_changed": bool, "old_stage": str, "new_stage": str}
               若无活跃宠物则返回 None
     """
-    pet = get_active_pet(db, user.id)
+    if pet is None:
+        pet = get_active_pet(db, user.id)
     if not pet:
         return None
 

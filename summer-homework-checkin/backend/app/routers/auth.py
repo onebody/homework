@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import User, StudentParent
-from ..schemas import UserRegister, UserLogin, UserOut, TokenOut, PasswordChangeRequest
+from ..schemas import UserRegister, UserLogin, UserOut, TokenOut, PasswordChangeRequest, ThemeUpdateRequest
 from ..security import hash_password, verify_password, create_token
 from ..deps import get_current_user
 from ..config import MIN_PASSWORD_LENGTH
@@ -69,6 +69,24 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return UserOut.model_validate(user)
+
+
+# 合法主题白名单（与前端 data-theme 取值保持一致）
+_VALID_THEMES = {"default", "cartoon"}
+
+
+@router.patch("/me")
+def update_me(
+    payload: ThemeUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """更新当前用户偏好（目前仅支持主题），云端持久化供跨设备恢复。"""
+    if payload.theme not in _VALID_THEMES:
+        raise HTTPException(status_code=400, detail="主题仅支持 default / cartoon")
+    user.theme = payload.theme
+    db.commit()
+    return {"ok": True, "theme": payload.theme}
 
 
 @router.put("/password")

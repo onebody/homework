@@ -349,7 +349,12 @@ const app = createApp({
       const c = this.children.find(x => x.student_id === this.actingChildId);
       return c ? c.nickname : "孩子";
     },
-    points() { return this.mall.points != null ? this.mall.points : (this.streak.points || 0); },
+    points() {
+      // 优先取 /api/auth/me 的实时积分（启动即可用）；mall/streak 为后续加载的兑底来源，
+      // 避免未进过商城页时积分恒显 0 导致喂养按钮被误判为「积分不足」
+      if (this.user && this.user.points != null) return this.user.points;
+      return this.mall.points != null ? this.mall.points : (this.streak.points || 0);
+    },
     // 抽奖转盘分区：由商城奖品（非抽奖券）生成 + 一个“谢谢参与”分区
     wheelSegments() {
       const prizes = (this.mall.prizes || [])
@@ -404,8 +409,10 @@ const app = createApp({
     },
   },
   mounted() {
-    // 同步主题属性（theme-boot.js 已在首帧前处理，此处兼作兜底）
-    this.setTheme(this.theme);
+    // 同步主题属性（theme-boot.js 已在首帧前处理，此处兼作兜底）。
+    // syncCloud=false：页面加载时严禁把本地缓存回写云端，否则会用过期的本地值
+    // 污染云端偏好；云端主题由 bootstrap()/login() 拉取后单向应用。
+    this.setTheme(this.theme, false);
     this.loadSiteTitle();
     if (this.token) this.bootstrap();
   },
@@ -448,11 +455,21 @@ const app = createApp({
       this.toastTimer = setTimeout(() => (this.toast = ""), 2200);
     },
     /* ============ 界面主题 ============ */
-    setTheme(t) {
+    setTheme(t, syncCloud = true) {
       this.theme = t;
+      // localStorage 作为降级方案与首帧预载来源（theme-boot.js）
       try { localStorage.setItem("student_theme", t); } catch (e) { /* 忽略存储异常 */ }
       if (t === "cartoon") document.documentElement.setAttribute("data-theme", "cartoon");
       else document.documentElement.removeAttribute("data-theme");
+      // 同步云端持久化（跨设备恢复）；fire-and-forget，网络失败不阻断切换，本地缓存仍可用。
+      // bootstrap 从云端应用主题时传 syncCloud=false 避免重复回写。
+      if (syncCloud && this.token) {
+        this.api("/api/auth/me", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ theme: t }),
+        }).catch(() => { /* 云端保存失败静默降级，本地主题已生效 */ });
+      }
     },
     toggleTheme() {
       this.setTheme(this.theme === "cartoon" ? "default" : "cartoon");
@@ -461,6 +478,10 @@ const app = createApp({
     async bootstrap() {
       try {
         this.user = await this.api("/api/auth/me");
+        // 云端主题偏好优先：非默认主题时显式应用（同时刷新本地缓存，供下次首帧预载）
+        if (this.user.theme && this.user.theme !== "default" && this.theme !== this.user.theme) {
+          this.setTheme(this.user.theme, false);
+        }
         this.view = "home";
         if (this.isParent) {
           await this.loadChildren();
@@ -477,6 +498,10 @@ const app = createApp({
         });
         this.token = d.access_token; localStorage.setItem("token", this.token);
         this.user = d.user; this.view = "home";
+        // 登录后立即应用云端主题偏好，避免需刷新页面才生效（不回写云端）
+        if (d.user.theme && d.user.theme !== "default" && this.theme !== d.user.theme) {
+          this.setTheme(d.user.theme, false);
+        }
         if (this.isParent) await this.loadChildren();
         else await this.loadHome();
       } catch (e) { this.showToast(e.message); }
@@ -743,6 +768,8 @@ const app = createApp({
         this.mall.prizes = d.prizes || [];
         this.streak.lottery_tickets = d.lottery_tickets;
         this.streak.points = d.points;
+        // 同步 user 对象，保持 points 计算属性取值源一致（仅学生本人；家长代看视图显示的是孩子积分）
+        if (!this.isParent && this.user) this.user.points = d.points;
       } catch (e) { this.showToast(e.message); }
       // 两个记录列表各自分页拉取（沿用当前页码）
       await this.loadRedemptions();
@@ -1093,15 +1120,18 @@ const app = createApp({
         const d = await this.api("/api/pet/feed", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ food_id: this.feedConfirm.id, quantity: qty }),
+          // 携带当前选中的宠物 ID，确保多宠物场景下喂养作用于目标宠物；
+          // selectedPetId 为空时不传，后端回退为默认活跃宠物（兼容单宠物场景）
+          body: JSON.stringify({ food_id: this.feedConfirm.id, quantity: qty, pet_id: this.selectedPetId || null }),
         });
         let msg = d.message || "喂养成功！";
         if (d.streak_bonus) msg += " ✨连击加成！";
         this.showToast(msg);
         this.feedConfirm = null;
-        // 刷新宠物状态和积分
+        // 刷新宠物状态和积分（含顶部实时积分）
         await this.loadPetStatus();
         await this.loadPetFoods();
+        try { this.user = await this.api("/api/auth/me"); } catch (e) { /* 积分刷新失败不阻断主流程 */ }
       } catch (e) {
         this.showToast(e.message || "喂养失败");
       } finally {

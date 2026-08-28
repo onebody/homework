@@ -48,6 +48,9 @@ class User(Base):
     pet_level = Column(String(16), nullable=True)       # 当前宠物阶段（baby/youth/adult/legend）
     pet_xp = Column(Integer, default=0)                 # 当前宠物累计成长经验值
 
+    # 界面主题偏好（云端持久化；NULL 表示未设置，前端回退为 default）
+    theme = Column(String(16), nullable=True)
+
     created_at = Column(DateTime, default=now_local)
 
     checkins = relationship("CheckIn", back_populates="user", cascade="all, delete-orphan")

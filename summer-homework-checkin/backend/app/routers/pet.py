@@ -44,6 +44,8 @@ class RenameRequest(BaseModel):
 class FeedRequest(BaseModel):
     food_id: int
     quantity: int = 1
+    # 目标宠物 ID（多宠物场景必传）；不传则回退为默认活跃宠物，兼容旧客户端
+    pet_id: int | None = None
 
 
 # ---------- 学生端接口 ----------
@@ -442,10 +444,18 @@ def feed_pet(
     if req.quantity < 1 or req.quantity > 99:
         raise HTTPException(status_code=400, detail="数量无效（1-99）")
 
-    # 1. 检查活跃宠物
-    pet = get_active_pet(db, user.id)
-    if not pet:
-        raise HTTPException(status_code=400, detail="你当前没有活跃宠物，请先领养")
+    # 1. 定位目标宠物：指定 pet_id 时精确匹配（防多宠物串喂），
+    # 未指定则回退为默认活跃宠物（兼容单宠物/旧客户端）
+    if req.pet_id is not None:
+        pet = db.query(PetAdoption).filter_by(
+            id=req.pet_id, user_id=user.id, is_active=True
+        ).first()
+        if not pet:
+            raise HTTPException(status_code=400, detail="目标宠物不存在或已放弃")
+    else:
+        pet = get_active_pet(db, user.id)
+        if not pet:
+            raise HTTPException(status_code=400, detail="你当前没有活跃宠物，请先领养")
 
     # 1b. 检查宠物是否生病
     if is_pet_sick(pet):
@@ -526,7 +536,7 @@ def feed_pet(
         db.commit()
 
         logger.info(
-            f"喂养成功: user={user.username} food={food.name}x{req.quantity} "
+            f"喂养成功: user={user.username} pet={pet.id} food={food.name}x{req.quantity} "
             f"suit={suit_level} cost={total_cost} xp={total_xp} "
             f"streak={pet.perfect_streak} bonus={streak_bonus}"
         )

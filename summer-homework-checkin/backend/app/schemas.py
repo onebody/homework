@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class UserRegister(BaseModel):
@@ -35,6 +35,16 @@ class UserOut(BaseModel):
     effective_checkins: int = 0
     lottery_tickets: int = 0
     points: int = 0
+    theme: str | None = None  # 界面主题偏好；云端为 NULL（未设置）时回退为 default
+
+    @field_validator("theme", mode="before")
+    @classmethod
+    def _theme_fallback(cls, v):
+        return v if v else "default"
+
+
+class ThemeUpdateRequest(BaseModel):
+    theme: str  # default | cartoon
 
 
 class PasswordChangeRequest(BaseModel):
