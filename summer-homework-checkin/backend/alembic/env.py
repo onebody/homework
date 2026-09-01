@@ -13,10 +13,16 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.database import Base
 from app import models  # noqa: F401
+from app.config import DATABASE_URL
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# DB 路径以 DB_PATH 环境变量为准（与 migrate.py/应用一致）：
+# alembic.ini 内的 sqlite:///app.db 仅是占位默认值，
+# 避免直接运行 alembic upgrade 时误操作错误数据库。
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 target_metadata = Base.metadata
 
@@ -41,6 +47,22 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+    # 空库且无版本记录：历史迁移 001 依赖既有库，直接重放会漏建早期表；
+    # 与 migrate.py 首部署对齐：create_all 建全表后 stamp head。
+    # 注意：检查必须用独立连接，避免 inspect 触发 autobegin 污染迁移事务。
+    from sqlalchemy import inspect as sa_inspect, text as sa_text
+    with connectable.connect() as check_conn:
+        tables = sa_inspect(check_conn).get_table_names()
+    if not tables or ("alembic_version" not in tables and "users" not in tables):
+        with connectable.begin() as conn:
+            Base.metadata.create_all(bind=conn)
+            from alembic.script import ScriptDirectory
+            script = ScriptDirectory.from_config(config)
+            head = script.get_current_head()
+            conn.execute(sa_text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)"))
+            conn.execute(sa_text("DELETE FROM alembic_version"))
+            conn.execute(sa_text("INSERT INTO alembic_version (version_num) VALUES (:v)"), {"v": head})
+        return
     with connectable.connect() as connection:
         context.configure(
             connection=connection,

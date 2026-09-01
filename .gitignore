@@ -48,7 +48,12 @@ venv/
 
 # ===== IDE 本机设置与临时验证产物 =====
 .qoder/settings.local.json
+.qoder/better-harness/
 
 # ===== 本地技能文件（不入库）=====
 .qoder/skills/
 admin-dashboard-screenshot.png
+
+# ===== 主题/农场 QA 临时截图与产物（不入库）=====
+theme_qa_*.png
+.tmp_theme_qa/

@@ -3,15 +3,20 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
-from ..models import User, StudentParent, Notification, Prize, LotteryRecord, Redemption
+from ..models import (
+    User, StudentParent, Notification, Prize, LotteryRecord, Redemption,
+    LearningPlan, LearningTask, TaskSubmission,
+)
 from ..database import get_db
 from ..schemas import (
     BindRequest, ChildSummary, NotificationOut, ReportOut,
     RedeemRequest, RedeemReplaceRequest, RedemptionOut, MallOut, LotteryRecordOut,
+    SubmissionReviewRequest,
 )
 from ..routers.redeem import RedeemResult
 from ..deps import get_current_user, require_role
 from ..services import report_service, checkin_service, redeem_service, lottery_service
+from ..services import learning_service as learning_svc
 from ..utils.pagination import CLIENT_PAGE_SIZE, Page, paginate
 from ..config import SUMMER_START, SUMMER_END
 
@@ -285,3 +290,84 @@ def child_report_html(
     child = _check_child_access(child_id, parent, db)
     rep = report_service.build_report(db, child, start, end)
     return HTMLResponse(report_service.build_html(rep))
+
+
+# ========== 学习成长计划：监督与家长审核 ==========
+
+def _bound_child_ids(parent: User, db: Session) -> list[int]:
+    binds = db.query(StudentParent).filter_by(parent_id=parent.id).all()
+    return [b.student_id for b in binds]
+
+
+@router.get("/learning/plans/{child_id}")
+def child_learning_plans(child_id: int, parent: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """孩子的计划列表与任务四态（经 _resolve_child 鉴权）。"""
+    from ..routers.learning import serialize_plan, serialize_task
+    child = _resolve_child(child_id, parent, db)
+    plans = db.query(LearningPlan).filter_by(
+        plan_type="instance", student_id=child.id,
+    ).order_by(LearningPlan.id.desc()).all()
+    out = []
+    for p in plans:
+        item = serialize_plan(db, p, with_progress=True)
+        tasks = (
+            db.query(LearningTask).filter_by(plan_id=p.id)
+            .order_by(LearningTask.sort_order, LearningTask.id).all()
+        )
+        item["tasks"] = [serialize_task(db, t, child) for t in tasks]
+        out.append(item)
+    return {"items": out}
+
+
+@router.get("/learning/summary/{child_id}")
+def child_learning_summary(child_id: int, parent: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """孩子的学习概况：连学天数/环进度/勋章数。"""
+    from ..routers.learning import build_summary
+    child = _resolve_child(child_id, parent, db)
+    return build_summary(db, child)
+
+
+@router.get("/learning/submissions/pending")
+def pending_learning_submissions(parent: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """本人孩子的待审提交。仅 review_mode=parent 时可用，否则 403。"""
+    if parent.role != "parent":
+        raise HTTPException(status_code=403, detail="无权限")
+    if learning_svc.resolve_review_mode(db) != "parent":
+        raise HTTPException(status_code=403, detail="当前审核模式非家长审核，无需家长审批")
+    from ..routers.learning import serialize_submission
+    child_ids = _bound_child_ids(parent, db)
+    if not child_ids:
+        return {"items": []}
+    subs = (
+        db.query(TaskSubmission)
+        .filter(TaskSubmission.user_id.in_(child_ids), TaskSubmission.review_status == "pending")
+        .order_by(TaskSubmission.created_at.desc()).all()
+    )
+    return {"items": [serialize_submission(db, s) for s in subs]}
+
+
+def _resolve_child_submission(sid: int, parent: User, db: Session) -> TaskSubmission:
+    sub = db.get(TaskSubmission, sid)
+    if not sub:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    _resolve_child(sub.user_id, parent, db)  # 校验绑定关系（未绑定抛 403）
+    return sub
+
+
+@router.put("/learning/submissions/{sid}/review")
+def review_child_submission(
+    sid: int, req: SubmissionReviewRequest,
+    parent: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """家长审核孩子的任务提交（仅 review_mode=parent 时）。"""
+    if parent.role != "parent":
+        raise HTTPException(status_code=403, detail="无权限")
+    if learning_svc.resolve_review_mode(db) != "parent":
+        raise HTTPException(status_code=403, detail="当前审核模式非家长审核，无需家长审批")
+    sub = _resolve_child_submission(sid, parent, db)
+    if req.approved:
+        learning_svc.approve_submission(db, sub, reviewer=parent, reviewer_role="parent", note=req.note)
+    else:
+        learning_svc.reject_submission(db, sub, reviewer=parent, reviewer_role="parent", note=req.note)
+    from ..routers.learning import serialize_submission
+    return serialize_submission(db, sub)

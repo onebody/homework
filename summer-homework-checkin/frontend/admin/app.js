@@ -1475,6 +1475,10 @@ const app = createApp({
 
 app.directive("auth-src", authSrcDirective);
 app.component("pager", Pager);
+// 学习成长计划管理模块：独立文件注入，新逻辑全部在 learning.js（须在 mount 前）
+if (window.LearningAdminModule) app.mixin(window.LearningAdminModule);
+// 成长农场管理模块：同范式注入（须在 mount 前）
+if (window.FarmAdminModule) app.mixin(window.FarmAdminModule);
 app.mount("#app");
 
 /* ==================== 工具函数 ==================== */

@@ -1,0 +1,260 @@
+/* =========================================================
+ * 学习成长计划模块样式（学生端）
+ * 全走 CSS 变量，[data-theme="cartoon"] 覆盖环形色板/卡片风格
+ * ========================================================= */
+:root {
+  --plan-ring-track: #e8eef6;
+  --plan-ring-bar: #2f80ed;
+  --plan-ring-text: #2b3a4a;
+  --plan-accent: #2f80ed;
+  --plan-accent-l: #eaf3ff;
+}
+
+/* ---------- 模式横幅（学期/假期） ---------- */
+.plan-mode-banner {
+  margin: 8px 14px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--plan-accent-l), #fff);
+  border: 1px solid var(--plan-accent-l);
+  color: var(--plan-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.plan-banner {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--plan-accent-l);
+  color: var(--plan-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------- 总览卡：环形进度 + 统计 ---------- */
+.plan-overview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.po-stats {
+  flex: 1;
+  display: flex;
+  justify-content: space-around;
+}
+.po-num {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.po-num small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ---------- 环形进度（SVG） ---------- */
+.ring-progress { display: block; flex: none; }
+.ring-progress .ring-track { stroke: var(--plan-ring-track); }
+.ring-progress .ring-bar { stroke: var(--plan-ring-bar); transition: stroke-dasharray .4s ease; }
+.ring-progress .ring-text {
+  fill: var(--plan-ring-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ---------- 子 tab ---------- */
+.plan-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.plan-tabs button {
+  flex: 1;
+  padding: 8px 0;
+  border: 1px solid #e3ebf5;
+  background: #fff;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.plan-tabs button.on {
+  background: var(--plan-accent-l);
+  border-color: var(--plan-accent);
+  color: var(--plan-accent);
+  font-weight: 700;
+}
+
+/* ---------- 计划列表项 ---------- */
+.plan-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.plan-item .pi-body { flex: 1; min-width: 0; }
+.plan-item .pi-name { font-size: 15px; font-weight: 700; color: var(--ink); }
+.plan-item .pi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.plan-item .pi-join { flex: none; }
+
+/* ---------- 计划详情头 ---------- */
+.plan-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.plan-detail-head h3 { flex: 1; margin: 0; }
+
+/* ---------- 任务卡（四态） ---------- */
+.task-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.task-card:last-child { margin-bottom: 0; }
+.tc-icon { font-size: 20px; line-height: 1.2; }
+.tc-body { flex: 1; min-width: 0; }
+.tc-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.tc-sub { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+.tc-status { flex: none; font-size: 12px; color: var(--muted); padding-top: 2px; }
+.task-card.st-todo { border-left: 3px solid #c8d2de; }
+.task-card.st-doing { border-left: 3px solid var(--plan-accent); background: var(--plan-accent-l); }
+.task-card.st-done { border-left: 3px solid #27ae60; opacity: .85; }
+.task-card.st-overdue { border-left: 3px solid #eb5757; background: #fff5f5; }
+.task-card.st-done .tc-title { text-decoration: line-through; }
+.sub-approved { color: #27ae60; }
+.sub-rejected { color: #eb5757; }
+.sub-pending { color: #f2994a; }
+.tc-percent { color: var(--plan-accent); }
+
+/* ---------- 勋章墙 ---------- */
+.badge-wall {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.bw-item {
+  text-align: center;
+  padding: 12px 6px;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  background: #fafbfd;
+  opacity: .55;
+}
+.bw-item.earned {
+  opacity: 1;
+  background: var(--plan-accent-l);
+  border-color: var(--plan-accent);
+}
+.bw-icon { font-size: 26px; }
+.bw-name { font-size: 12px; font-weight: 700; color: var(--ink); margin-top: 4px; }
+.bw-desc { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+
+/* ---------- 任务弹窗内表单 ---------- */
+.plan-form-block { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e3ebf5; }
+.plan-form-block label { font-size: 13px; font-weight: 700; color: var(--ink); display: block; margin-bottom: 6px; }
+.plan-form-block textarea {
+  width: 100%;
+  border: 1px solid #e3ebf5;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  resize: vertical;
+}
+.pf-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.pf-row input { flex: 1; min-width: 0; }
+
+/* ---------- 通知铃铛 + 未读角标 ---------- */
+.notif-bell {
+  position: relative;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+.nb-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #eb5757;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* ---------- 通知面板条目 ---------- */
+.notif-item {
+  padding: 10px 8px;
+  border-bottom: 1px dashed #e3ebf5;
+  cursor: pointer;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item.unread { background: var(--plan-accent-l); border-radius: 8px; }
+.ni-title { font-size: 13px; font-weight: 700; color: var(--ink); }
+.ni-content { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.notif-item small { color: var(--muted); }
+
+/* ---------- 家长审核条目 ---------- */
+.review-item {
+  padding: 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+.review-item:last-child { margin-bottom: 0; }
+.ri-head { font-size: 14px; font-weight: 700; color: var(--ink); }
+.ri-content { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.ri-photo {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+/* =========================================================
+ * 卡通成长主题覆盖（无主题闪烁：均由 data-theme 属性选择器派生）
+ * ========================================================= */
+[data-theme="cartoon"] {
+  --plan-ring-track: #f0e6cf;
+  --plan-ring-bar: #f2994a;
+  --plan-ring-text: #5a4632;
+  --plan-accent: #e8842c;
+  --plan-accent-l: #fdf1de;
+}
+[data-theme="cartoon"] .task-card {
+  border-radius: 18px;
+  border-color: #eadfc2;
+}
+[data-theme="cartoon"] .task-card.st-doing { background: var(--plan-accent-l); }
+[data-theme="cartoon"] .plan-tabs button { border-radius: 999px; border-color: #eadfc2; }
+[data-theme="cartoon"] .bw-item { border-radius: 18px; border-color: #eadfc2; }
+[data-theme="cartoon"] .bw-item.earned { border-color: var(--plan-accent); }
+[data-theme="cartoon"] .plan-mode-banner,
+[data-theme="cartoon"] .plan-banner { border-radius: 18px; }
+[data-theme="cartoon"] .plan-form-block textarea { border-color: #eadfc2; border-radius: 16px; background: #fff; }
+[data-theme="cartoon"] .plan-form-block textarea:focus { border-color: var(--plan-accent); }
+[data-theme="cartoon"] .review-item { border-radius: 18px; border-color: #eadfc2; }
+[data-theme="cartoon"] .notif-item.unread { background: var(--plan-accent-l); }

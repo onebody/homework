@@ -6,6 +6,8 @@
   <title>暑假作业打卡平台</title>
   <link rel="stylesheet" href="./student.css?v=20260828" />
   <link rel="stylesheet" href="./student-cartoon.css?v=20260828" />
+  <link rel="stylesheet" href="./plan.css?v=20260830c" />
+  <link rel="stylesheet" href="./farm.css?v=20260830" />
   <!-- 主题预载：首帧前应用已保存的「卡通成长」主题防闪烁；CSP 禁止内联脚本，故为外部文件 -->
   <script src="./theme-boot.js?v=20260828"></script>
   <!-- Vue 本地托管于 /vendor（随镜像打包，无外部 CDN 依赖）；相对路径兼容子路径部署；?v= 为版本号用于缓存刷新 -->
@@ -44,6 +46,7 @@
       <span class="hi">Hi, {{ isParent ? '家长·' : '' }}{{ subjectName }}</span>
       <span class="topbar-right">
         <span class="ticket">⭐ {{ points }} 积分</span>
+        <button class="notif-bell" title="通知" @click="openNotifPanel">🔔<span class="nb-badge" v-if="notifUnread>0">{{ notifUnread>99?'99+':notifUnread }}</span></button>
         <button class="theme-toggle" :title="theme==='cartoon' ? '切换为简约经典' : '切换为卡通成长'" @click="toggleTheme">{{ theme==='cartoon' ? '🌈' : '🎨' }}</button>
       </span>
     </header>
@@ -70,6 +73,11 @@
 
     <div class="empty-tip" v-else-if="isParent && children.length>0">
       <p>已绑定 {{ children.length }} 个孩子</p>
+    </div>
+
+    <!-- 学期/假期模式横幅（学习计划模块；点击直达计划视图） -->
+    <div class="plan-mode-banner" v-if="!isParent && planConfig.mode && planConfig.mode!=='summer'" @click="goPlan()">
+      {{ planConfig.mode==='holiday' ? '❄️ 假期模式' : '📚 学期模式' }}：{{ planConfig.semester_name || '学习计划进行中' }}，点击查看今日待办 →
     </div>
 
     <!-- 首页 -->
@@ -681,10 +689,370 @@
       </div>
     </div>
 
+    <!-- 学习计划（学生端 + 家长监督视图） -->
+    <section class="page" v-if="view==='plan'">
+      <template v-if="isParent">
+        <div class="card center" v-if="!actingChildId">
+          <p class="muted">请先绑定孩子，再查看学习监督视图</p>
+        </div>
+        <template v-else>
+          <div class="card plan-overview" v-if="parentLearning.summary">
+            <ring-progress :percent="parentLearning.summary.percent || 0" :size="84" :stroke="9"></ring-progress>
+            <div class="po-stats">
+              <div class="po-num">{{ parentLearning.summary.study_streak || 0 }}<small>孩子连学天数</small></div>
+              <div class="po-num">{{ parentLearning.summary.done_tasks || 0 }}/{{ parentLearning.summary.total_tasks || 0 }}<small>完成任务</small></div>
+              <div class="po-num">{{ parentLearning.summary.badge_count || 0 }}<small>获得勋章</small></div>
+            </div>
+          </div>
+
+          <div class="card" v-for="p in parentLearning.plans" :key="p.id">
+            <h3>{{ p.name }} <small class="muted">{{ p.progress ? '进度 ' + p.progress.percent + '%' : '' }}</small></h3>
+            <p class="muted" v-if="!p.tasks.length">暂无任务</p>
+            <task-card v-for="t in p.tasks" :key="t.id" :task="t" @open="openPlanTask"></task-card>
+          </div>
+          <div class="card center" v-if="!parentLearning.plans.length">
+            <p class="muted">孩子还没有学习计划</p>
+          </div>
+
+          <!-- 家长审核（仅 review_mode=parent） -->
+          <div class="card" v-if="planConfig.review_mode==='parent'">
+            <h3>📝 待我审核（{{ parentLearning.pending.length }}）</h3>
+            <div class="review-item" v-for="s in parentLearning.pending" :key="s.id">
+              <div class="ri-head">{{ s.user_nickname }} · {{ s.task_title }}</div>
+              <div class="ri-content" v-if="s.content">{{ s.content }}</div>
+              <img v-if="s.photo_url" v-auth-src="s.photo_url" class="ri-photo" alt="成果照片" />
+              <div class="modal-actions">
+                <button class="ghost" :disabled="parentReviewBusy" @click="parentReview(s, false)">❌ 驳回</button>
+                <button class="primary" :disabled="parentReviewBusy" @click="parentReview(s, true)">✅ 通过</button>
+              </div>
+            </div>
+            <p class="muted" v-if="!parentLearning.pending.length">暂无待审提交</p>
+          </div>
+        </template>
+      </template>
+      <template v-else>
+        <div class="plan-banner" v-if="planConfig.mode && planConfig.mode!=='summer'">
+          {{ planConfig.mode==='holiday' ? '❄️' : '📚' }} {{ planConfig.semester_name || (planConfig.mode==='holiday' ? '假期模式' : '学期模式') }}
+          <small v-if="planConfig.class_name"> · {{ planConfig.class_name }}</small>
+        </div>
+
+        <!-- 总览：环进度 + 连学天数 + 任务数 + 勋章数 -->
+        <div class="card plan-overview">
+          <ring-progress :percent="planSummary.percent || 0" :size="84" :stroke="9"></ring-progress>
+          <div class="po-stats">
+            <div class="po-num">{{ planSummary.study_streak || 0 }}<small>连学天数</small></div>
+            <div class="po-num">{{ planSummary.done_tasks || 0 }}/{{ planSummary.total_tasks || 0 }}<small>完成任务</small></div>
+            <div class="po-num">{{ planSummary.badge_count || 0 }}<small>获得勋章</small></div>
+          </div>
+        </div>
+
+        <div class="plan-tabs">
+          <button :class="{on:planTab==='my'}" @click="switchPlanTab('my')">📋 我的计划</button>
+          <button :class="{on:planTab==='templates'}" @click="switchPlanTab('templates')">🗂 计划模板</button>
+          <button :class="{on:planTab==='badges'}" @click="switchPlanTab('badges')">🏅 勋章墙</button>
+        </div>
+
+        <!-- 我的计划 -->
+        <template v-if="planTab==='my'">
+          <div v-if="!currentPlan">
+            <div class="card center" v-if="!planList.length">
+              <p class="muted">还没有学习计划，去挑选一个模板开始吧</p>
+              <button class="primary big" @click="switchPlanTab('templates')">🗂 去挑选模板</button>
+            </div>
+            <div class="card plan-item" v-for="p in planList" :key="p.id" @click="openPlan(p)">
+              <ring-progress :percent="p.progress ? p.progress.percent : 0" :size="52" :stroke="6"></ring-progress>
+              <div class="pi-body">
+                <div class="pi-name">{{ p.name }}</div>
+                <div class="pi-sub">
+                  {{ p.semester_name || '' }} · 共 {{ p.task_count }} 个任务 ·
+                  {{ p.status==='active' ? '进行中' : (p.status==='archived' ? '已归档' : p.status) }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else>
+            <div class="card plan-detail-head">
+              <button class="ghost" @click="closePlanDetail">← 返回</button>
+              <h3>{{ currentPlan.name }}</h3>
+              <ring-progress :percent="currentPlan.progress ? currentPlan.progress.percent : 0" :size="52" :stroke="6"></ring-progress>
+            </div>
+            <div class="card" v-if="todayTodoTasks.length">
+              <h3>⏰ 今日待办</h3>
+              <task-card v-for="t in todayTodoTasks" :key="'td'+t.id" :task="t" @open="openPlanTask"></task-card>
+            </div>
+            <div class="card">
+              <h3>📋 全部任务</h3>
+              <p class="muted" v-if="!currentTasks.length">该计划暂无任务</p>
+              <task-card v-for="t in currentTasks" :key="t.id" :task="t" @open="openPlanTask"></task-card>
+            </div>
+          </div>
+        </template>
+
+        <!-- 计划模板（班级/年级隔离后可见） -->
+        <template v-if="planTab==='templates'">
+          <div class="card center" v-if="!planTemplates.items.length">
+            <p class="muted">暂无可见的计划模板（模板由管理员按年级/班级发布）</p>
+          </div>
+          <div class="card plan-item" v-for="t in planTemplates.items" :key="t.id">
+            <div class="pi-body">
+              <div class="pi-name">{{ t.name }}</div>
+              <div class="pi-sub" v-if="t.description">{{ t.description }}</div>
+              <div class="pi-sub">共 {{ t.task_count }} 个任务 · {{ t.period_type==='month' ? '按月' : '按周' }}</div>
+            </div>
+            <div class="pi-join">
+              <span v-if="planTemplates.instantiated.indexOf(t.id) >= 0" class="muted">✅ 已加入</span>
+              <button v-else class="primary sm" :disabled="planBusy" @click="instantiateTemplate(t)">加入计划</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 勋章墙 -->
+        <div class="card" v-if="planTab==='badges'">
+          <h3>🏅 我的勋章</h3>
+          <badge-wall :items="planBadges"></badge-wall>
+        </div>
+      </template>
+    </section>
+
+    <!-- 学习任务详情弹窗 -->
+    <div class="modal" v-if="selectedPlanTask">
+      <div class="modal-card">
+        <h3>{{ selectedPlanTask.subject_emoji || '📖' }} {{ selectedPlanTask.title }}</h3>
+        <div class="task-detail">
+          <p class="muted" v-if="selectedPlanTask.completion_criteria">完成标准：{{ selectedPlanTask.completion_criteria }}</p>
+          <p class="muted">学科：{{ selectedPlanTask.subject_name || '综合' }} · 预计 {{ selectedPlanTask.est_minutes }} 分钟</p>
+          <p class="muted" v-if="selectedPlanTask.due_date">截止：{{ selectedPlanTask.due_date }}</p>
+          <p class="muted">奖励：⭐ {{ selectedPlanTask.reward_points }} 积分 · ✨ {{ selectedPlanTask.reward_xp }} 宠物经验</p>
+        </div>
+
+        <div v-if="selectedPlanTask.computed_status==='done'" class="task-completed">
+          <p>✅ 任务已完成</p>
+        </div>
+        <div v-else-if="selectedPlanTask.submission && selectedPlanTask.submission.review_status==='pending'" class="task-reviewing">
+          <p>⏳ 成果已提交，等待审核</p>
+        </div>
+        <div v-else-if="isParent" class="task-reviewing">
+          <p>👀 家长仅可查看任务详情</p>
+        </div>
+        <template v-else>
+          <!-- 记录进展（0-99%，完成后由审核确认） -->
+          <div class="plan-form-block">
+            <label>📝 记录进展</label>
+            <textarea v-model="planProgressForm.note" rows="2" placeholder="今天做了什么？（可选）"></textarea>
+            <div class="pf-row">
+              <input type="number" v-model.number="planProgressForm.minutes_spent" min="0" placeholder="用时(分钟)" />
+              <input type="number" v-model.number="planProgressForm.percent" min="0" max="99" placeholder="进度%(0-99)" />
+              <button class="ghost" :disabled="planBusy" @click="saveProgress">保存进展</button>
+            </div>
+            <p class="muted" v-if="selectedPlanTask.progress_percent > 0">当前进度：{{ selectedPlanTask.progress_percent }}%</p>
+          </div>
+
+          <!-- 提交成果 -->
+          <div class="plan-form-block">
+            <label>🏁 提交完成成果</label>
+            <textarea v-model="planSubmitForm.content" rows="2" placeholder="描述你的完成情况…"></textarea>
+            <label class="uploader small" :class="{filled:planSubmitForm.photoData}">
+              <input type="file" accept="image/*" @change="onPlanPhoto" />
+              <img v-if="planSubmitForm.photoData" :src="planSubmitForm.photoData" class="preview sm" />
+              <span v-else>📷 上传成果照片（可选）</span>
+            </label>
+            <div class="modal-actions">
+              <button class="ghost" @click="selectedPlanTask=null">取消</button>
+              <button class="primary" :disabled="planBusy" @click="submitTaskResult">
+                {{ planBusy ? '提交中…' : '提交成果' }}
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ==================== 成长农场（逻辑在 farm.js） ==================== -->
+    <section class="page" v-if="view==='farm'">
+      <!-- 未开通：开通引导 -->
+      <div v-if="farmStatus && !farmOpened">
+        <div class="card center farm-hero">
+          <div class="farm-hero-emoji">🌱</div>
+          <h2>成长农场</h2>
+          <p class="muted">把每一次认真学习都变成成长能量 ⚡<br>种菜、养殖、培育成长树，催生属于你的森林！</p>
+        </div>
+        <div class="card">
+          <h3>⚡ 能量从哪里来？</h3>
+          <div class="farm-rules">
+            <div class="farm-rule"><span>📚 学习任务审核通过</span><b>+{{ farmRules.energy_per_task }} ⚡</b></div>
+            <div class="farm-rule"><span>📝 打卡审核通过</span><b>+{{ farmRules.energy_per_checkin }} ⚡</b></div>
+            <div class="farm-rule"><span>🕒 开通时历史成果</span><b>一次性转化</b></div>
+          </div>
+          <h3 style="margin-top:14px">🌾 选择农场模板</h3>
+          <div class="farm-tpl-grid">
+            <div class="farm-tpl-card" v-for="t in farmStatus.templates" :key="t.key"
+                 :class="[t.style_class, {selected: farmInitForm.template_key === t.key}]"
+                 @click="farmInitForm.template_key = t.key">
+              <div class="ftc-tree">{{ t.tree_emoji }}</div>
+              <div class="ftc-name">{{ t.name }}</div>
+              <div class="ftc-desc">{{ t.description }}</div>
+              <div class="ftc-items">
+                <span v-for="c in t.crop_items" :key="c.key">{{ c.emoji }}</span>
+                <span v-for="a in t.animal_items" :key="a.key">{{ a.emoji }}</span>
+              </div>
+            </div>
+          </div>
+          <label>给你的成长乐园起个名字（可选）
+            <input v-model="farmInitForm.name" :placeholder="farmStatus.default_name" maxlength="32" />
+          </label>
+          <button class="primary big" :disabled="farmBusy" @click="initFarm">
+            {{ farmBusy ? '开通中…' : '🌱 开通成长农场' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 已开通：农场场景 -->
+      <div v-else-if="farmOpened">
+        <div class="farm-subtabs">
+          <button :class="{on:farmTab==='scene'}" @click="switchFarmTab('scene')">🌾 我的农场</button>
+          <button :class="{on:farmTab==='log'}" @click="switchFarmTab('log')">⚡ 能量流水</button>
+        </div>
+
+        <div v-if="farmTab==='scene'" class="farm-scene" :class="farmTpl ? farmTpl.style_class : ''">
+          <!-- 乐园头部：名称/能量/模板 -->
+          <div class="card farm-head">
+            <div class="fh-title">
+              <h3>{{ farm.name }} <span class="fh-edit" @click="openFarmRename">✏️</span></h3>
+              <span class="fh-tpl" @click="loadFarmTemplates">{{ farmTpl ? farmTpl.name : '选择模板' }} 🎨</span>
+            </div>
+            <div class="fh-stats">
+              <div class="fh-stat"><b>⚡ {{ farm.energy_balance }}</b><span>当前能量</span></div>
+              <div class="fh-stat"><b>✨ {{ farm.total_energy_earned }}</b><span>累计获得</span></div>
+              <div class="fh-stat"><b>🌲 {{ farm.forest_count }}</b><span>森林数量</span></div>
+            </div>
+            <p class="muted fh-hint">完成任务、打卡审核通过都会自动获得成长能量；成长树升级和育成大树会解锁更多地块。</p>
+          </div>
+
+          <!-- 成长树 -->
+          <div class="card farm-tree">
+            <div class="ft-emoji">{{ farm.tree_emoji }}</div>
+            <div class="ft-body">
+              <div class="ft-name">成长树 <small>阶段 {{ farm.tree_stage }}</small></div>
+              <div class="ft-bar-wrap"><div class="ft-bar" :style="{width: farm.percent + '%'}"></div></div>
+              <div class="ft-info">🌟 {{ farm.tree_energy }} / {{ farm.next_threshold }}（育满大树需 1500 能量）</div>
+            </div>
+            <button class="primary" :disabled="farmBusy" @click="waterTree">💧 浇水 ⚡{{ farmRules.water_cost || 50 }}</button>
+          </div>
+
+          <!-- 地块 -->
+          <div class="card">
+            <div class="farm-plots-head">
+              <h3>🌾 农场地块 <small class="muted">{{ farmPlots.length ? farmPlots.filter(p=>p.status!=='harvested').length : 0 }}/{{ farm.max_plots }}</small></h3>
+              <div class="farm-plot-actions">
+                <button class="primary sm" @click="openFarmPlant('crop')">🥬 种菜</button>
+                <button class="primary sm ghost" @click="openFarmPlant('animal')">🐾 养殖</button>
+              </div>
+            </div>
+            <div class="farm-plot-grid">
+              <div class="farm-plot" v-for="p in farmPlots.filter(x=>x.status!=='harvested')" :key="p.id"
+                   :class="{mature: p.is_mature}">
+                <div class="fp-emoji">{{ farmPlotItem(p).emoji }}</div>
+                <div class="fp-name">{{ farmPlotItem(p).name }}</div>
+                <button v-if="p.is_mature" class="primary sm" :disabled="farmBusy" @click="harvestPlot(p)">收获 +{{ p.reward_energy }}⚡</button>
+                <small v-else class="muted">{{ farmPlotCountdown(p) }}</small>
+              </div>
+              <div class="farm-plot empty" v-for="n in farmEmptyPlots" :key="'e'+n" @click="openFarmPlant('crop')">
+                <div class="fp-emoji">➕</div>
+                <small class="muted">空地</small>
+              </div>
+            </div>
+            <p class="muted" v-if="!farmPlots.length && !farmEmptyPlots">暂无地块</p>
+          </div>
+        </div>
+
+        <!-- 能量流水 -->
+        <div v-else class="card">
+          <h3>⚡ 能量流水 <small class="muted">共 {{ farmLog.total }} 条</small></h3>
+          <p class="muted" v-if="!farmLog.items.length">暂无流水</p>
+          <div class="farm-log">
+            <div class="fl-item" v-for="l in farmLog.items" :key="l.id">
+              <div class="fl-main">
+                <b>{{ farmSourceText(l.source) }}</b>
+                <small class="muted" v-if="l.note">{{ l.note }}</small>
+              </div>
+              <div class="fl-right">
+                <b :class="l.delta > 0 ? 'fl-plus' : 'fl-minus'">{{ l.delta > 0 ? '+' : '' }}{{ l.delta }} ⚡</b>
+                <small class="muted">{{ fmt(l.created_at) }}</small>
+              </div>
+            </div>
+          </div>
+          <pager :page="farmLog.page" :pages="farmLog.pages" :total="farmLog.total" @go="loadFarmLog" v-if="farmLog.pages > 1"></pager>
+        </div>
+      </div>
+
+      <!-- 改名弹窗 -->
+      <div class="modal" v-if="showFarmRename">
+        <div class="modal-card">
+          <h3>✏️ 给成长乐园改名</h3>
+          <label>乐园名称（1-32 字符）
+            <input v-model="farmRenameInput" maxlength="32" placeholder="例如：小明的梦想田园" />
+          </label>
+          <div class="modal-actions">
+            <button class="ghost" @click="showFarmRename=false">取消</button>
+            <button class="primary" :disabled="farmBusy" @click="saveFarmRename">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 切换模板弹窗 -->
+      <div class="modal" v-if="showFarmTpl">
+        <div class="modal-card">
+          <h3>🎨 切换农场模板</h3>
+          <p class="muted">切换后场景与可种作物/可养动物随之变化，已种地块不受影响。</p>
+          <div class="farm-tpl-list">
+            <div class="farm-tpl-row" v-for="t in farmTplOptions" :key="t.key"
+                 :class="{current: farmTpl && farmTpl.key === t.key}">
+              <span class="ftr-tree">{{ t.tree_emoji }}</span>
+              <div class="ftr-body">
+                <b>{{ t.name }}</b>
+                <small class="muted">{{ t.description }}</small>
+              </div>
+              <button class="primary sm" v-if="!(farmTpl && farmTpl.key === t.key)"
+                      :disabled="farmBusy" @click="switchFarmTpl(t.key)">选择</button>
+              <small v-else class="muted">当前</small>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="ghost" @click="showFarmTpl=false">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 种植/领养选择弹窗 -->
+      <div class="modal" v-if="showFarmPlant && farmTpl">
+        <div class="modal-card">
+          <h3>{{ showFarmPlant === 'crop' ? '🥬 选择作物种植' : '🐾 选择动物领养' }}</h3>
+          <p class="muted" v-if="showFarmPlant==='crop'">
+            种植消耗 ⚡{{ farmRules.crop_cost }}，成熟收获 +⚡{{ farmRules.crop_reward }}
+          </p>
+          <p class="muted" v-else>
+            领养消耗 ⚡{{ farmRules.animal_cost }}，长成收获 +⚡{{ farmRules.animal_reward }}
+          </p>
+          <div class="farm-plant-grid">
+            <div class="farm-plant-item" v-for="it in (showFarmPlant==='crop' ? farmTpl.crop_items : farmTpl.animal_items)"
+                 :key="it.key" @click="doFarmPlant(it)">
+              <div class="fpi-emoji">{{ it.emoji }}</div>
+              <div class="fpi-name">{{ it.name }}</div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="ghost" @click="showFarmPlant=null">取消</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- 底部导航 -->
     <nav class="tabbar">
       <div :class="{on:view==='home'}" @click="go('home')">🏠<span>首页</span></div>
       <div :class="{on:view==='checkin-challenge'}" @click="go('checkin-challenge')">📝<span>打卡闯关</span></div>
+      <div :class="{on:view==='plan'}" @click="goPlan()">📚<span>学习计划</span></div>
+      <div :class="{on:view==='farm'}" @click="goFarm()">🌱<span>成长农场</span></div>
       <div :class="{on:view==='pet'}" @click="go('pet')">🐾<span>宠物乐园</span></div>
       <div :class="{on:view==='mall'}" @click="go('mall')">🛍️<span>商城</span></div>
       <div :class="{on:view==='me'}" @click="go('me')">👤<span>我的</span></div>
@@ -739,10 +1107,29 @@
     </div>
   </div>
 
+  <!-- 通知面板（WS 实时 + 轮询降级共用数据源） -->
+  <div class="modal" v-if="showNotifPanel">
+    <div class="modal-card">
+      <h3>🔔 通知</h3>
+      <p class="muted" v-if="!notifItems.length">暂无通知</p>
+      <div class="notif-item" v-for="n in notifItems" :key="n.id" :class="{unread:!n.read}" @click="markNotifRead(n)">
+        <div class="ni-title">{{ n.title }}</div>
+        <div class="ni-content" v-if="n.content">{{ n.content }}</div>
+        <small>{{ fmt(n.created_at) }}</small>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost" @click="showNotifPanel=false">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" v-if="toast">{{ toast }}</div>
 </div>
 
 <!-- 替换弹窗依赖全局样式 .modal/.modal-card，定义在 student.css -->
-<script src="./app.js?v=20260828f"></script>
+<!-- plan.js / farm.js 须在 app.js 之前加载（定义 window.PlanModule / FarmModule，供 app.js mixin 注入） -->
+<script src="./plan.js?v=20260830d"></script>
+<script src="./farm.js?v=20260830"></script>
+<script src="./app.js?v=20260830b"></script>
 </body>
 </html>

@@ -1234,4 +1234,8 @@ const app = createApp({
 
 app.directive("auth-src", authSrcDirective);
 app.component("pager", Pager);
+// 学习成长计划模块：独立文件注入，新逻辑全部在 plan.js，避免 app.js 继续膨胀（须在 mount 前）
+if (window.PlanModule) app.mixin(window.PlanModule);
+// 成长农场模块：同范式注入（须在 mount 前）
+if (window.FarmModule) app.mixin(window.FarmModule);
 app.mount("#app");

@@ -11,7 +11,8 @@ from .config import (
 )
 from .database import engine
 from . import models  # noqa: F401 确保模型被加载
-from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge, dingtalk_bot, wecom_bot, site, uploads, pet
+from .routers import auth, checkin, lottery, prize, parent, report, admin, face, redeem, challenge, dingtalk_bot, wecom_bot, site, uploads, pet, learning, learning_admin, farm, farm_admin
+from . import ws
 from .utils.rate_limit import check_rate_limit
 
 # 生产环境（PRODUCTION 非空）关闭交互式 API 文档，避免暴露接口清单与数据结构
@@ -19,7 +20,7 @@ _PRODUCTION = bool(os.environ.get("PRODUCTION"))
 
 app = FastAPI(
     title="暑假作业打卡系统",
-    version="1.2.0",
+    version="1.3.0",
     docs_url=None if _PRODUCTION else "/docs",
     redoc_url=None if _PRODUCTION else "/redoc",
     openapi_url=None if _PRODUCTION else "/openapi.json",
@@ -49,6 +50,11 @@ app.include_router(wecom_bot.router)
 app.include_router(site.router)
 app.include_router(uploads.router)
 app.include_router(pet.router)
+app.include_router(learning.router)
+app.include_router(learning_admin.router)
+app.include_router(farm.router)
+app.include_router(farm_admin.router)
+app.include_router(ws.router)
 
 
 @app.middleware("http")
@@ -79,7 +85,7 @@ async def security_headers_middleware(request: Request, call_next):
         "script-src 'self' 'unsafe-eval'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:; "
-        "connect-src 'self'; "
+        "connect-src 'self' ws: wss:; "
         "object-src 'none'; "
         "base-uri 'self'; "
         "frame-ancestors 'none'"

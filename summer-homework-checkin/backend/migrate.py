@@ -74,9 +74,13 @@ def run_migrations():
             pass
 
     if not db_exists or not has_users_table:
-        # 首次部署：数据库不存在或无表，用 create_all 建表
+        # 首次部署：数据库不存在或无表，用 create_all 建表。
+        # 关键：必须先导入模型注册到 Base.metadata，否则 create_all 为空操作；
+        # 建表后清空连接池，避免连接缓存“表不存在”的旧状态。
+        from app import models  # noqa: F401
         print(" 首次部署，使用 create_all 创建表结构...")
         Base.metadata.create_all(bind=engine)
+        engine.dispose()
         _stamp_initial_revision()
         print("✅ 表结构创建完成")
     elif not has_alembic_record:
@@ -92,13 +96,17 @@ def run_migrations():
         except Exception as e:
             if "no such table" in str(e).lower():
                 # 迁移脚本引用了不存在的表，兜底用 create_all
+                from app import models  # noqa: F401
                 print("ℹ️  部分表缺失，使用 create_all 补充...")
                 Base.metadata.create_all(bind=engine)
+                engine.dispose()
                 print("✅ 表结构已补充")
             else:
                 print(f"⚠️  迁移异常: {e}")
                 print("ℹ️  使用 create_all 确保表结构存在...")
+                from app import models  # noqa: F401
                 Base.metadata.create_all(bind=engine)
+                engine.dispose()
                 print("✅ 表结构已确保存在")
 
 

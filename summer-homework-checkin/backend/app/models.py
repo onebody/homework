@@ -1,7 +1,7 @@
 from datetime import datetime, date, timezone
 
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text
+    Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, Index, text
 )
 from sqlalchemy.orm import relationship
 
@@ -42,6 +42,8 @@ class User(Base):
     lottery_tickets = Column(Integer, default=0)        # 当前可用抽奖资格
     points = Column(Integer, default=0)                 # 积分余额（打卡获得，用于兑换奖品）
     last_7_milestone = Column(Integer, default=0)       # 已解锁的 7 的倍数里程碑
+    study_streak = Column(Integer, default=0)           # 当前连续学习天数（学习任务审核通过维护）
+    study_longest_streak = Column(Integer, default=0)   # 历史最长连续学习天数
 
     # 宠物系统冗余字段（由宠物服务维护，快速查询用）
     pet_id = Column(Integer, nullable=True)             # 当前活跃宠物 ID（关联 pet_adoption.id）
@@ -50,6 +52,9 @@ class User(Base):
 
     # 界面主题偏好（云端持久化；NULL 表示未设置，前端回退为 default）
     theme = Column(String(16), nullable=True)
+
+    # 班级归属（学习计划模块；NULL 表示未分班，不受班级隔离影响）
+    class_id = Column(Integer, ForeignKey("class_groups.id"), nullable=True)
 
     created_at = Column(DateTime, default=now_local)
 
@@ -231,6 +236,7 @@ class SiteConfig(Base):
     student_slogan = Column(String(128), nullable=True)      # 学生端登录页欢迎标语（空=默认标语）
     checkin_points = Column(Integer, nullable=True)          # 正常打卡积分（空=用 config.CHECKIN_POINTS 默认值）
     makeup_points = Column(Integer, nullable=True)           # 补卡积分（空=用 config.MAKEUP_POINTS 默认值）
+    farm_default_name = Column(String(64), nullable=True)    # 成长农场站点默认乐园名（空=内置默认）
     updated_at = Column(DateTime, default=now_local)
 
 
@@ -333,6 +339,7 @@ class PetFeedLog(Base):
     stage_after = Column(String(16), nullable=True)          # 操作后阶段（升级时不同）
     trigger_checkin_id = Column(Integer, nullable=True)      # 触发的打卡记录 ID（打卡自动成长时）
     feed_item_id = Column(Integer, nullable=True)            # 道具喂养时的食物 ID
+    trigger_task_submission_id = Column(Integer, nullable=True)  # 触发的学习任务提交 ID（feed_type=task 时）
     points_cost = Column(Integer, default=0)                 # 道具喂养消耗的积分
     suitability_result = Column(String(20), nullable=True)   # 适配结果：perfect/suitable/caution/warning/danger
     created_at = Column(DateTime, default=now_local, index=True)
@@ -358,3 +365,255 @@ class PetFeedItem(Base):
     created_at = Column(DateTime, default=now_local)
 
     species = relationship("PetSpecies", foreign_keys=[species_id])
+
+
+# ========== 多学段学习成长计划 ==========
+
+class Subject(Base):
+    """学科定义（管理员维护）。grade_min/grade_max 限定适用学段（1-6 年级）。"""
+    __tablename__ = "subjects"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(32), nullable=False)              # 如：语文/数学/英语/科学
+    emoji = Column(String(16), default="📚")
+    grade_min = Column(Integer, default=1)                 # 学段下限（含）
+    grade_max = Column(Integer, default=6)                 # 学段上限（含）
+    sort_order = Column(Integer, default=0)
+    status = Column(String(8), default="on")               # on|off
+    is_preset = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=now_local)
+
+
+class ClassGroup(Base):
+    """班级（数据隔离最小单元）。grade 冗余便于按年级筛选。"""
+    __tablename__ = "class_groups"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), nullable=False)              # 如：三年级1班
+    grade = Column(Integer, nullable=False)                # 1-6
+    created_at = Column(DateTime, default=now_local)
+
+
+class Semester(Base):
+    """学期/假期周期。type: semester（学期）|holiday（寒暑假等假期）|summer（暑假）。"""
+    __tablename__ = "semesters"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), nullable=False)              # 如：2026秋季学期 / 2027寒假 / 2026暑假
+    type = Column(String(16), default="semester")          # semester|holiday|summer
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    status = Column(String(16), default="archived")        # active|archived
+    created_at = Column(DateTime, default=now_local)
+
+
+class LearningPlan(Base):
+    """学习计划：单表双角色。
+    plan_type=template：管理员维护的计划模板（可指定目标年级/班级，可空=全部）；
+    plan_type=instance：由模板实例化出的学生个人计划（归属 student_id）。
+    """
+    __tablename__ = "learning_plans"
+
+    id = Column(Integer, primary_key=True)
+    plan_type = Column(String(16), nullable=False, default="template")  # template|instance
+    name = Column(String(128), nullable=False)
+    description = Column(Text, nullable=True)
+    semester_id = Column(Integer, ForeignKey("semesters.id"), nullable=True, index=True)  # 实例必填，模板可空
+    grade = Column(Integer, nullable=True)                 # 模板目标年级（可空=全部）
+    class_id = Column(Integer, ForeignKey("class_groups.id"), nullable=True)  # 模板目标班级（可空=全部）
+    period_type = Column(String(8), default="week")        # week|month（计划周期维度）
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # 实例归属学生，模板为 NULL
+    instantiated_from = Column(Integer, ForeignKey("learning_plans.id"), nullable=True)  # 实例→模板回链
+    status = Column(String(16), default="draft")           # draft|published|active|archived
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=now_local)
+
+    semester = relationship("Semester", foreign_keys=[semester_id])
+    tasks = relationship("LearningTask", back_populates="plan", cascade="all, delete-orphan")
+
+
+class LearningTask(Base):
+    """学习任务：属于某个计划（模板任务或实例任务）。
+    status 仅存 todo/doing/done 三态；“已逾期”由 due_date 与当前日期查询时计算。
+    """
+    __tablename__ = "learning_tasks"
+
+    id = Column(Integer, primary_key=True)
+    plan_id = Column(Integer, ForeignKey("learning_plans.id"), nullable=False, index=True)
+    template_task_id = Column(Integer, nullable=True)      # 实例任务→模板任务回链
+    subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=True)
+    title = Column(String(128), nullable=False)
+    completion_criteria = Column(Text, nullable=True)      # 完成标准
+    est_minutes = Column(Integer, default=30)              # 预计耗时（分钟）
+    due_date = Column(Date, nullable=True)                 # 截止日期（可空=不限期）
+    reward_points = Column(Integer, default=10)            # 审核通过后发放积分
+    reward_xp = Column(Integer, default=10)                # 审核通过后发放宠物 XP
+    sort_order = Column(Integer, default=0)
+    status = Column(String(8), default="todo")             # todo|doing|done
+    done_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=now_local)
+
+    plan = relationship("LearningPlan", back_populates="tasks")
+    subject = relationship("Subject", foreign_keys=[subject_id])
+
+    __table_args__ = (
+        Index("ix_learning_tasks_plan_due", "plan_id", "due_date"),
+    )
+
+
+class ProgressRecord(Base):
+    """任务进展流水（过程性反馈：笔记/耗时/百分比）。"""
+    __tablename__ = "progress_records"
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("learning_tasks.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    note = Column(Text, nullable=True)
+    minutes_spent = Column(Integer, default=0)
+    percent = Column(Integer, default=0)                   # 0-100
+    created_at = Column(DateTime, default=now_local)
+
+    task = relationship("LearningTask", foreign_keys=[task_id])
+
+    __table_args__ = (
+        Index("ix_progress_records_task_time", "task_id", "created_at"),
+    )
+
+
+class TaskSubmission(Base):
+    """任务完成提交成果（文字 + 可选照片），进入审核流。
+    并发重复发奖兑底：部分唯一索引 UNIQUE(task_id) WHERE review_status='approved'。
+    """
+    __tablename__ = "task_submissions"
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("learning_tasks.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    content = Column(Text, nullable=True)
+    photo_path = Column(String(256), nullable=True)
+    review_status = Column(String(16), default="pending")  # pending|approved|rejected
+    review_note = Column(String(256), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewer_role = Column(String(16), nullable=True)      # admin|parent|auto
+    reviewed_at = Column(DateTime, nullable=True)
+    is_effective = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=now_local)
+
+    task = relationship("LearningTask", foreign_keys=[task_id])
+    user = relationship("User", foreign_keys=[user_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+    @property
+    def photo_url(self):
+        from .utils.storage import public_url
+        return public_url(self.photo_path)
+
+    __table_args__ = (
+        # 部分唯一索引：同一任务最多一条 approved，并发重复发奖的硬兑底（与 014 迁移同名）
+        Index("ux_task_submissions_approved", "task_id", unique=True,
+              sqlite_where=text("review_status='approved'")),
+    )
+
+
+class UserBadge(Base):
+    """成就勋章授予记录（幂等：同用户同 badge_key 只授一次）。"""
+    __tablename__ = "user_badges"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    badge_key = Column(String(32), nullable=False, index=True)  # plan_first/streak7/subject_master...
+    badge_name = Column(String(64), nullable=False)        # 授予时名称快照
+    earned_at = Column(DateTime, default=now_local)
+
+
+class LearningConfig(Base):
+    """学习计划全局配置（单行表，同 SiteConfig 范式）。
+    mode: summer（暑假打卡模式）|semester（学期模式）|holiday（假期学习模式）。
+    review_mode: auto（自动通过）|parent（家长审核）|admin（管理员审核）。
+    """
+    __tablename__ = "learning_config"
+
+    id = Column(Integer, primary_key=True)
+    mode = Column(String(16), default="summer")            # summer|semester|holiday
+    review_mode = Column(String(16), default="admin")      # auto|parent|admin
+    current_semester_id = Column(Integer, ForeignKey("semesters.id"), nullable=True)
+    updated_at = Column(DateTime, default=now_local)
+
+
+# ==================== 成长农场（游戏化养成） ====================
+
+
+class FarmTemplate(Base):
+    """农场模板：田园/科幻/卡通等主题风格，决定场景视觉与作物/动物素材集。"""
+    __tablename__ = "farm_templates"
+
+    id = Column(Integer, primary_key=True)
+    key = Column(String(32), nullable=False, unique=True)  # pastoral|scifi|cartoon
+    name = Column(String(64), nullable=False)
+    description = Column(String(256), nullable=True)
+    style_class = Column(String(32), nullable=False)       # 前端主题 class（tpl-pastoral 等）
+    tree_emoji = Column(String(16), default="🌳")          # 成长树展示 emoji（随阶段变化由前端映射）
+    crop_items = Column(Text, nullable=True)               # JSON：[{key,name,emoji}] 可种作物
+    animal_items = Column(Text, nullable=True)             # JSON：[{key,name,emoji}] 可养动物
+    status = Column(String(16), default="on")              # on|off
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=now_local)
+
+
+class Farm(Base):
+    """学生成长农场（一人一场）。能量由学习任务/打卡审核通过转化而来。"""
+    __tablename__ = "farms"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    name = Column(String(64), nullable=False)              # 自定义乐园名（默认取站点配置）
+    template_id = Column(Integer, ForeignKey("farm_templates.id"), nullable=True)
+    energy_balance = Column(Integer, default=0)            # 当前可用能量
+    total_energy_earned = Column(Integer, default=0)       # 历史累计获得（含回填）
+    tree_energy = Column(Integer, default=0)               # 已注入成长树的能量（决定阶段）
+    tree_stage = Column(Integer, default=0)                # 0-4（种子→大树）
+    forest_count = Column(Integer, default=0)              # 已育成森林数（每次升满阶段 +1）
+    backfilled = Column(Boolean, default=False)            # 历史数据是否已一次性回填能量（去重守卫）
+    created_at = Column(DateTime, default=now_local)
+    updated_at = Column(DateTime, default=now_local)
+
+    template = relationship("FarmTemplate", foreign_keys=[template_id])
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class FarmPlot(Base):
+    """农场地块：种菜（crop）或养殖（animal），成熟后收获返还能量（正向循环）。"""
+    __tablename__ = "farm_plots"
+
+    id = Column(Integer, primary_key=True)
+    farm_id = Column(Integer, ForeignKey("farms.id"), nullable=False, index=True)
+    plot_type = Column(String(8), nullable=False)          # crop|animal
+    item_key = Column(String(32), nullable=False)          # 作物/动物 key（对应模板 items）
+    status = Column(String(16), default="growing")         # growing|mature|harvested
+    energy_cost = Column(Integer, default=0)               # 投入能量（审计）
+    reward_energy = Column(Integer, default=0)             # 成熟收获返还能量（下单时快照）
+    planted_at = Column(DateTime, default=now_local)
+    mature_at = Column(DateTime, nullable=True)            # 成熟时间（到期即可收获）
+    harvested_at = Column(DateTime, nullable=True)
+
+    farm = relationship("Farm", foreign_keys=[farm_id])
+
+
+class FarmEnergyLog(Base):
+    """能量流水：获得（任务/打卡/回填/收获）与消耗（种植/养殖/浇树）全量审计。"""
+    __tablename__ = "farm_energy_log"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    farm_id = Column(Integer, ForeignKey("farms.id"), nullable=False, index=True)
+    source = Column(String(24), nullable=False)
+    # task_approval|checkin_approval|backfill|harvest|plant|adopt|water
+    delta = Column(Integer, nullable=False)                # 正=获得，负=消耗
+    balance_after = Column(Integer, nullable=False)
+    ref_id = Column(Integer, nullable=True)                # 回链：提交/打卡/地块 id
+    note = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=now_local)
+
+    __table_args__ = (
+        Index("ix_farm_energy_log_user_time", "user_id", "created_at"),
+    )

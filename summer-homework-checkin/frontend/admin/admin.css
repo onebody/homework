@@ -524,3 +524,11 @@ th{background:#f7f9fc;color:#5a6b7e;font-weight:600}
 .suit-tag-warning{background:#ffe0b2;color:#e65100}
 .suit-tag-caution{background:#fff3cd;color:#856404}
 
+
+/* ==================== 学习计划管理（learning.js） ==================== */
+.la-thumb{width:44px;height:44px;object-fit:cover;border-radius:6px;margin-top:4px;cursor:pointer;border:1px solid #e3ebf5}
+.la-task-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed #e3ebf5}
+.la-task-row:last-of-type{border-bottom:none}
+.la-stu-list{max-height:260px;overflow:auto;border:1px solid #e3ebf5;border-radius:8px;padding:6px 10px;margin-bottom:10px}
+.la-stu-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer}
+.la-stu-item input[type=checkbox]{width:16px;height:16px;min-height:auto;padding:0;margin:0;flex:none}

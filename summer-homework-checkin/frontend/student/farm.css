@@ -1,0 +1,115 @@
+/* =========================================================
+ * 成长农场模块样式（学生端）
+ * - 模板主题：.tpl-pastoral 田园 / .tpl-scifi 科幻 / .tpl-cartoon 卡通
+ * - 站点「卡通成长」主题：[data-theme="cartoon"] 覆盖变量
+ * ========================================================= */
+
+/* ---------- 开通引导 ---------- */
+.farm-hero .farm-hero-emoji{font-size:56px;line-height:1.2}
+.farm-rules{display:flex;flex-direction:column;gap:8px}
+.farm-rule{display:flex;justify-content:space-between;align-items:center;background:var(--blue-l,#f2f7ff);border-radius:10px;padding:10px 12px;font-size:14px}
+.farm-rule b{color:var(--orange,#f5a623)}
+
+.farm-tpl-grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:8px}
+.farm-tpl-card{border:2px solid #eef2f7;border-radius:14px;padding:12px;cursor:pointer;transition:border-color .15s,transform .15s}
+.farm-tpl-card.selected{border-color:var(--blue,#3b82f6);transform:translateY(-1px)}
+.ftc-tree{font-size:30px}
+.ftc-name{font-weight:700;font-size:15px;margin-top:2px}
+.ftc-desc{font-size:12px;color:var(--muted,#8a94a6);margin-top:2px}
+.ftc-items{margin-top:6px;font-size:18px;letter-spacing:2px}
+
+/* ---------- 子 tab ---------- */
+.farm-subtabs{display:flex;gap:8px;margin-bottom:12px}
+.farm-subtabs button{flex:1;border:none;border-radius:10px;padding:10px 0;font-size:14px;background:#eef2f7;color:var(--muted,#8a94a6);cursor:pointer}
+.farm-subtabs button.on{background:var(--blue,#3b82f6);color:#fff;font-weight:700}
+
+/* ---------- 场景主题（作用于 .farm-scene 与模板卡片） ---------- */
+.farm-scene{border-radius:16px;padding:2px}
+.farm-scene .card{border-radius:14px}
+
+/* 田园风：暖绿麦浪 */
+.tpl-pastoral{--farm-bg:linear-gradient(160deg,#eaf6e3 0%,#fdf6e3 100%);--farm-accent:#5c9e31;--farm-plot-bg:#f6efdc}
+/* 科幻风：深空蓝紫 */
+.tpl-scifi{--farm-bg:linear-gradient(160deg,#e7ecfb 0%,#efe7fb 100%);--farm-accent:#6c5ce7;--farm-plot-bg:#eceafb}
+/* 卡通风：糖果粉橙 */
+.tpl-cartoon{--farm-bg:linear-gradient(160deg,#fdeee6 0%,#fdecf3 100%);--farm-accent:#ff7f50;--farm-plot-bg:#fdf0ea}
+
+.farm-scene.tpl-pastoral,.farm-scene.tpl-scifi,.farm-scene.tpl-cartoon{background:var(--farm-bg);padding:12px}
+.farm-scene .farm-head,.farm-scene .farm-tree,.farm-scene .card{border-top:3px solid var(--farm-accent,#3b82f6)}
+.farm-tpl-card.tpl-pastoral{background:#f6fbf1}
+.farm-tpl-card.tpl-scifi{background:#f5f4fd}
+.farm-tpl-card.tpl-cartoon{background:#fdf4ef}
+
+/* ---------- 乐园头部 ---------- */
+.fh-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.fh-title h3{margin:0;font-size:17px}
+.fh-edit{cursor:pointer;font-size:14px;opacity:.7}
+.fh-tpl{font-size:12px;color:var(--muted,#8a94a6);cursor:pointer;white-space:nowrap}
+.fh-stats{display:flex;gap:8px;margin-top:10px}
+.fh-stat{flex:1;text-align:center;background:var(--farm-plot-bg,#f2f7ff);border-radius:10px;padding:8px 4px;display:flex;flex-direction:column;gap:2px}
+.fh-stat b{font-size:15px}
+.fh-stat span{font-size:11px;color:var(--muted,#8a94a6)}
+.fh-hint{font-size:12px;margin:10px 0 0}
+
+/* ---------- 成长树 ---------- */
+.farm-tree{display:flex;align-items:center;gap:12px}
+.ft-emoji{font-size:44px;line-height:1}
+.ft-body{flex:1;min-width:0}
+.ft-name{font-weight:700;font-size:15px}
+.ft-name small{color:var(--muted,#8a94a6);font-weight:400;margin-left:4px}
+.ft-bar-wrap{height:10px;border-radius:5px;background:#eef2f7;overflow:hidden;margin:6px 0}
+.ft-bar{height:100%;border-radius:5px;background:linear-gradient(90deg,#7cc576,#3ba55d);transition:width .3s}
+.ft-info{font-size:12px;color:var(--muted,#8a94a6)}
+
+/* ---------- 地块 ---------- */
+.farm-plots-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.farm-plots-head h3{margin:0;font-size:16px}
+.farm-plot-actions{display:flex;gap:8px}
+.farm-plot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.farm-plot{background:var(--farm-plot-bg,#f2f7ff);border-radius:12px;padding:10px 6px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:92px;justify-content:center;border:2px solid transparent}
+.farm-plot.mature{border-color:#f5a623;background:#fff8e8;animation:farm-pulse 1.6s ease-in-out infinite}
+@keyframes farm-pulse{0%,100%{box-shadow:0 0 0 0 rgba(245,166,35,.35)}50%{box-shadow:0 0 0 6px rgba(245,166,35,0)}}
+.farm-plot .fp-emoji{font-size:28px}
+.farm-plot .fp-name{font-size:12px;font-weight:600}
+.farm-plot.empty{border:2px dashed #d6dce6;background:transparent;cursor:pointer}
+.farm-plot.empty .fp-emoji{opacity:.5}
+.farm-plot small{font-size:11px}
+
+/* ---------- 能量流水 ---------- */
+.farm-log{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.fl-item{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#f7f9fc;border-radius:10px;padding:8px 12px}
+.fl-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fl-main b{font-size:14px}
+.fl-main small{font-size:11px}
+.fl-right{text-align:right;display:flex;flex-direction:column;gap:2px;flex-shrink:0}
+.fl-plus{color:#3ba55d}
+.fl-minus{color:#e0654f}
+
+/* ---------- 弹窗内列表 ---------- */
+.farm-tpl-list{display:flex;flex-direction:column;gap:8px;margin:8px 0}
+.farm-tpl-row{display:flex;align-items:center;gap:10px;border:1px solid #eef2f7;border-radius:12px;padding:10px}
+.farm-tpl-row.current{background:var(--blue-l,#f2f7ff)}
+.ftr-tree{font-size:26px}
+.ftr-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.farm-plant-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
+.farm-plant-item{border:1px solid #eef2f7;border-radius:12px;padding:10px 4px;text-align:center;cursor:pointer}
+.farm-plant-item:active{background:var(--blue-l,#f2f7ff)}
+.fpi-emoji{font-size:26px}
+.fpi-name{font-size:12px;margin-top:2px}
+
+/* ---------- 移动端微调 ---------- */
+@media (max-width:360px){
+  .farm-plot-grid{grid-template-columns:repeat(2,1fr)}
+  .fh-stat b{font-size:13px}
+  .farm-plant-grid{grid-template-columns:repeat(3,1fr)}
+}
+
+/* ---------- 站点「卡通成长」主题适配 ---------- */
+[data-theme="cartoon"] .farm-rule{background:#fff3ea}
+[data-theme="cartoon"] .farm-subtabs button{background:#fdeee2;color:#a67c5a}
+[data-theme="cartoon"] .farm-subtabs button.on{background:linear-gradient(90deg,#ff9a56,#ff6b81);color:#fff}
+[data-theme="cartoon"] .farm-plot{background:#fff7ef}
+[data-theme="cartoon"] .fh-stat{background:#fff3ea}
+[data-theme="cartoon"] .fl-item{background:#fff7ef}
+[data-theme="cartoon"] .ft-bar{background:linear-gradient(90deg,#ffb457,#ff6b81)}
+[data-theme="cartoon"] .farm-tpl-card.selected{border-color:#ff8a5c}

@@ -38,6 +38,8 @@
         <div :class="{on:view==='users'}" @click="view='users'; loadUsers(1)">👥 用户管理</div>
         <div class="tab-redeems" :class="{on:view==='redeems'}" @click="loadRedeems(1)">🎁 兑换记录 <span class="nav-badge" v-if="redeemPendingCount>0">{{ redeemPendingCount }}</span></div>
         <div :class="{on:view==='checkins'}" @click="view='checkins'; loadCheckins(1)">📸 打卡记录</div>
+        <div :class="{on:view==='learning'}" @click="openLearning()">📚 学习计划</div>
+        <div :class="{on:view==='farm'}" @click="openFarmAdmin()">🌱 成长农场</div>
         <div :class="{on:view==='challenges'}" @click="view='challenges'; loadChallengeTasks()">🏆 闯关任务 <span class="nav-badge" v-if="challengePendingCount>0">{{ challengePendingCount }}</span></div>
         <div :class="{on:view==='pets'}" @click="openPets">🐾 宠物管理</div>
         <div :class="{on:view==='push'}" @click="openPush">🔔 推送配置</div>
@@ -1000,6 +1002,469 @@
           </template>
         </div>
       </section>
+
+      <!-- ==================== 学习计划（新模块，逻辑在 learning.js） ==================== -->
+      <section v-if="view==='learning'">
+        <div class="bar">
+          <h2>📚 学习计划</h2>
+          <div style="flex:1"></div>
+          <button class="mini" :class="{on:laTab==='config'}" @click="switchLaTab('config')">⚙️ 配置</button>
+          <button class="mini" :class="{on:laTab==='subjects'}" @click="switchLaTab('subjects')">学科</button>
+          <button class="mini" :class="{on:laTab==='semesters'}" @click="switchLaTab('semesters')">学期</button>
+          <button class="mini" :class="{on:laTab==='classes'}" @click="switchLaTab('classes')">班级</button>
+          <button class="mini" :class="{on:laTab==='templates'}" @click="switchLaTab('templates')">模板</button>
+          <button class="mini" :class="{on:laTab==='submissions'}" @click="switchLaTab('submissions')">审核队列</button>
+        </div>
+
+        <!-- 子页：审核配置 -->
+        <div v-if="laTab==='config'" class="data-card" style="max-width:520px">
+          <label>运行模式
+            <select v-model="laConfig.mode">
+              <option value="summer">☀️ 暑假模式（保持现状）</option>
+              <option value="semester">📚 学期模式</option>
+              <option value="holiday">❄️ 假期模式</option>
+            </select>
+          </label>
+          <label>任务审核方式
+            <select v-model="laConfig.review_mode">
+              <option value="auto">🤖 自动通过（提交即完成）</option>
+              <option value="parent">👪 家长审核</option>
+              <option value="admin">🛡️ 管理员审核</option>
+            </select>
+          </label>
+          <label>当前学期（学生实例化模板时归属）
+            <select v-model="laConfig.current_semester_id">
+              <option :value="null">— 未设置 —</option>
+              <option v-for="s in laSemesters" :key="s.id" :value="s.id">{{ s.name }}（{{ s.start_date }} ~ {{ s.end_date }}）</option>
+            </select>
+          </label>
+          <div class="modal-actions">
+            <button class="primary" :disabled="laBusy" @click="saveLaConfig">{{ laBusy ? '保存中…' : '保存配置' }}</button>
+          </div>
+          <p class="muted">切回暑假模式不影响已有计划数据；学生端会自动隐藏学期横幅并回到打卡首页。</p>
+        </div>
+
+        <!-- 子页：学科 -->
+        <template v-if="laTab==='subjects'">
+          <div class="bar" style="margin-bottom:10px">
+            <span class="muted">共 {{ laSubjects.length }} 个学科（学段范围控制学生端可见性）</span>
+            <div style="flex:1"></div>
+            <button class="primary" @click="openSubjectEdit(null)">➕ 新增学科</button>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>学科</th><th>学段范围</th><th>排序</th><th>状态</th><th>预设</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="s in laSubjects" :key="s.id">
+                <td>{{ s.id }}</td>
+                <td>{{ s.emoji }} {{ s.name }}</td>
+                <td>{{ s.grade_min }}~{{ s.grade_max }} 年级</td>
+                <td>{{ s.sort_order }}</td>
+                <td><span class="badge" :class="s.status==='on' ? 'ok' : 'off'">{{ s.status==='on' ? '上架' : '下架' }}</span></td>
+                <td>{{ s.is_preset ? '✅' : '' }}</td>
+                <td>
+                  <button class="mini" @click="openSubjectEdit(s)">编辑</button>
+                  <button class="mini danger" @click="deleteSubject(s)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted" v-if="!laSubjects.length" style="text-align:center;padding:20px">暂无学科</p>
+        </template>
+
+        <!-- 子页：学期 -->
+        <template v-if="laTab==='semesters'">
+          <div class="bar" style="margin-bottom:10px">
+            <span class="muted">共 {{ laSemesters.length }} 个学期/假期</span>
+            <div style="flex:1"></div>
+            <button class="primary" @click="openSemesterEdit(null)">➕ 新增学期</button>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>起止日期</th><th>状态</th><th>当前</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="s in laSemesters" :key="s.id">
+                <td>{{ s.id }}</td>
+                <td>{{ s.name }}</td>
+                <td>{{ s.type==='semester' ? '学期' : (s.type==='holiday' ? '假期' : '暑假') }}</td>
+                <td>{{ s.start_date }} ~ {{ s.end_date }}</td>
+                <td><span class="badge" :class="s.status==='active' ? 'ok' : 'off'">{{ s.status==='active' ? '启用' : '归档' }}</span></td>
+                <td>{{ laConfig.current_semester_id===s.id ? '⭐' : '' }}</td>
+                <td>
+                  <button class="mini" @click="openSemesterEdit(s)">编辑</button>
+                  <button class="mini danger" @click="deleteSemester(s)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted" v-if="!laSemesters.length" style="text-align:center;padding:20px">暂无学期，请先创建</p>
+        </template>
+
+        <!-- 子页：班级 -->
+        <template v-if="laTab==='classes'">
+          <div class="bar" style="margin-bottom:10px">
+            <span class="muted">班级用于模板隔离可见性与批量指派</span>
+            <div style="flex:1"></div>
+            <button class="primary" @click="openClassEdit(null)">➕ 新增班级</button>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>班级名称</th><th>年级</th><th>学生数</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="c in laClasses" :key="c.id">
+                <td>{{ c.id }}</td>
+                <td>{{ c.name }}</td>
+                <td>{{ c.grade }} 年级</td>
+                <td>{{ c.member_count }}</td>
+                <td>
+                  <button class="mini" @click="openClassMembers(c)">分班</button>
+                  <button class="mini" @click="openClassEdit(c)">编辑</button>
+                  <button class="mini danger" @click="deleteClass(c)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted" v-if="!laClasses.length" style="text-align:center;padding:20px">暂无班级</p>
+        </template>
+
+        <!-- 子页：模板 -->
+        <template v-if="laTab==='templates'">
+          <div class="bar" style="margin-bottom:10px">
+            <span class="muted">模板发布后学生可见；指派后自动实例化为个人计划</span>
+            <div style="flex:1"></div>
+            <button class="primary" @click="openTemplateEdit(null)">➕ 新建模板</button>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>名称</th><th>学期</th><th>目标</th><th>任务数</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="t in laTemplates" :key="t.id">
+                <td>{{ t.id }}</td>
+                <td>{{ t.name }}</td>
+                <td>{{ t.semester_name || '—' }}</td>
+                <td>{{ t.class_name || (t.grade ? t.grade + ' 年级' : '全校') }}</td>
+                <td>{{ t.task_count }}</td>
+                <td>
+                  <span class="badge ok" v-if="t.status==='published'">已发布</span>
+                  <span class="badge off" v-else-if="t.status==='archived'">已归档</span>
+                  <span class="badge warn" v-else>草稿</span>
+                </td>
+                <td>
+                  <button class="mini" @click="openTemplateDetail(t)">任务</button>
+                  <button class="mini" @click="openTemplateEdit(t)">编辑</button>
+                  <button class="mini" v-if="t.status!=='published'" @click="publishTemplate(t)">发布</button>
+                  <button class="mini" v-if="t.status==='published'" @click="openAssign(t)">指派</button>
+                  <button class="mini danger" @click="deleteTemplate(t)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted" v-if="!laTemplates.length" style="text-align:center;padding:20px">暂无模板</p>
+        </template>
+
+        <!-- 子页：审核队列 -->
+        <template v-if="laTab==='submissions'">
+          <div class="bar" style="margin-bottom:10px">
+            <span class="muted">共 {{ laSubPg.total }} 条</span>
+            <div style="flex:1"></div>
+            <button class="mini" :class="{on:laSubFilter==='pending'}" @click="laSubFilter='pending'; loadLaSubs(1)">待审核</button>
+            <button class="mini" :class="{on:laSubFilter==='approved'}" @click="laSubFilter='approved'; loadLaSubs(1)">已通过</button>
+            <button class="mini" :class="{on:laSubFilter==='rejected'}" @click="laSubFilter='rejected'; loadLaSubs(1)">已驳回</button>
+            <button class="mini" :class="{on:laSubFilter==='all'}" @click="laSubFilter='all'; loadLaSubs(1)">全部</button>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>学生</th><th>任务</th><th>提交内容</th><th>提交时间</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="s in laSubs" :key="s.id">
+                <td>{{ s.id }}</td>
+                <td>{{ s.user_nickname }}</td>
+                <td>{{ s.task_title }}</td>
+                <td style="max-width:220px">
+                  <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.content || '（仅照片）' }}</div>
+                  <img v-if="s.photo_url" v-auth-src="s.photo_url" class="la-thumb" alt="成果照片" @click="openViewer(thumbUrl(s.photo_url))" />
+                </td>
+                <td>{{ s.created_at ? s.created_at.slice(0, 16).replace('T', ' ') : '' }}</td>
+                <td>
+                  <span class="badge warn" v-if="s.review_status==='pending'">待审</span>
+                  <span class="badge ok" v-else-if="s.review_status==='approved'">通过</span>
+                  <span class="badge danger" v-else>驳回</span>
+                </td>
+                <td>
+                  <template v-if="s.review_status==='pending'">
+                    <button class="mini" @click="laReview(s, true)">✅ 通过</button>
+                    <button class="mini danger" @click="laReview(s, false)">❌ 驳回</button>
+                  </template>
+                  <span class="muted" v-else>{{ s.reviewer_role==='parent' ? '家长' : (s.reviewer_role==='auto' ? '自动' : '管理员') }}已审</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted" v-if="!laSubs.length" style="text-align:center;padding:20px">暂无提交记录</p>
+          <pager :page="laSubPg.page" :pages="laSubPg.pages" :total="laSubPg.total" @go="loadLaSubs"></pager>
+        </template>
+
+        <!-- 弹窗：学科编辑 -->
+        <div class="modal" v-if="laSubjectEditing" @click.self="laSubjectEditing=null">
+          <div class="modal-card">
+            <h3>{{ laSubjectEditing.id ? '编辑学科' : '新增学科' }}</h3>
+            <label>名称 <input v-model="laSubjectEditing.name" placeholder="如：语文" /></label>
+            <label>Emoji <input v-model="laSubjectEditing.emoji" placeholder="📖" /></label>
+            <label>学段下限（1-6） <input v-model.number="laSubjectEditing.grade_min" type="number" min="1" max="6" /></label>
+            <label>学段上限（1-6） <input v-model.number="laSubjectEditing.grade_max" type="number" min="1" max="6" /></label>
+            <label>排序 <input v-model.number="laSubjectEditing.sort_order" type="number" /></label>
+            <label>状态
+              <select v-model="laSubjectEditing.status">
+                <option value="on">上架</option>
+                <option value="off">下架</option>
+              </select>
+            </label>
+            <div class="modal-actions">
+              <button class="ghost" @click="laSubjectEditing=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="saveSubject">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：学期编辑 -->
+        <div class="modal" v-if="laSemesterEditing" @click.self="laSemesterEditing=null">
+          <div class="modal-card">
+            <h3>{{ laSemesterEditing.id ? '编辑学期' : '新增学期' }}</h3>
+            <label>名称 <input v-model="laSemesterEditing.name" placeholder="如：2026秋季学期" /></label>
+            <label>类型
+              <select v-model="laSemesterEditing.type">
+                <option value="semester">学期</option>
+                <option value="holiday">假期（寒暑假短周期）</option>
+                <option value="summer">暑假</option>
+              </select>
+            </label>
+            <label>开始日期 <input v-model="laSemesterEditing.start_date" type="date" /></label>
+            <label>结束日期 <input v-model="laSemesterEditing.end_date" type="date" /></label>
+            <label>状态
+              <select v-model="laSemesterEditing.status">
+                <option value="active">启用</option>
+                <option value="archived">归档</option>
+              </select>
+            </label>
+            <div class="modal-actions">
+              <button class="ghost" @click="laSemesterEditing=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="saveSemester">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：班级编辑 -->
+        <div class="modal" v-if="laClassEditing" @click.self="laClassEditing=null">
+          <div class="modal-card">
+            <h3>{{ laClassEditing.id ? '编辑班级' : '新增班级' }}</h3>
+            <label>名称 <input v-model="laClassEditing.name" placeholder="如：三年级1班" /></label>
+            <label>年级（1-6） <input v-model.number="laClassEditing.grade" type="number" min="1" max="6" /></label>
+            <div class="modal-actions">
+              <button class="ghost" @click="laClassEditing=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="saveClass">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：批量分班 -->
+        <div class="modal" v-if="laClassMembers" @click.self="laClassMembers=null">
+          <div class="modal-card" style="width:420px">
+            <h3>分班 → {{ laClassMembers.name }}</h3>
+            <p class="muted">勾选后学生将归入该班级（同步年级），已选 {{ laClassMembers.selected.length }} 人</p>
+            <div class="la-stu-list">
+              <label v-for="u in laStudents" :key="u.id" class="la-stu-item">
+                <input type="checkbox" :value="u.id" v-model="laClassMembers.selected" />
+                {{ u.nickname }} <small class="muted">{{ u.grade }}年级 · {{ u.class_name || '未分班' }}</small>
+              </label>
+            </div>
+            <div class="modal-actions">
+              <button class="ghost" @click="laClassMembers=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="assignClassMembers">确认分班</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：模板编辑 -->
+        <div class="modal" v-if="laTemplateEditing" @click.self="laTemplateEditing=null">
+          <div class="modal-card">
+            <h3>{{ laTemplateEditing.id ? '编辑模板' : '新建模板' }}</h3>
+            <label>名称 <input v-model="laTemplateEditing.name" placeholder="如：每周成长计划" /></label>
+            <label>描述 <input v-model="laTemplateEditing.description" placeholder="可选" /></label>
+            <label>学期（可选）
+              <select v-model="laTemplateEditing.semester_id">
+                <option :value="null">不限</option>
+                <option v-for="s in laSemesters" :key="s.id" :value="s.id">{{ s.name }}</option>
+              </select>
+            </label>
+            <label>目标年级（空=全部）
+              <select v-model="laTemplateEditing.grade">
+                <option :value="null">全部年级</option>
+                <option v-for="g in [1,2,3,4,5,6]" :key="g" :value="g">{{ g }} 年级</option>
+              </select>
+            </label>
+            <label>目标班级（空=全部）
+              <select v-model="laTemplateEditing.class_id">
+                <option :value="null">全部班级</option>
+                <option v-for="c in laClasses" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </label>
+            <label>周期
+              <select v-model="laTemplateEditing.period_type">
+                <option value="week">按周</option>
+                <option value="month">按月</option>
+              </select>
+            </label>
+            <div class="modal-actions">
+              <button class="ghost" @click="laTemplateEditing=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="saveTemplate">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：模板任务明细 -->
+        <div class="modal" v-if="laTemplateDetail" @click.self="laTemplateDetail=null">
+          <div class="modal-card" style="width:480px">
+            <h3>{{ laTemplateDetail.plan.name }} · 任务维护</h3>
+            <p class="muted">共 {{ laTemplateDetail.tasks.length }} 个任务（发布前可任意调整）</p>
+            <div v-for="t in laTemplateDetail.tasks" :key="t.id" class="la-task-row">
+              <div style="flex:1">
+                <b>{{ t.subject_emoji || '📖' }} {{ t.title }}</b>
+                <div class="muted" style="font-size:12px">⏱{{ t.est_minutes }}分 · ⭐{{ t.reward_points }} · ✨{{ t.reward_xp }}<span v-if="t.due_date"> · 截止 {{ t.due_date }}</span></div>
+              </div>
+              <button class="mini" @click="openTaskEdit(t)">编辑</button>
+              <button class="mini danger" @click="deleteTemplateTask(t)">删除</button>
+            </div>
+            <p class="muted" v-if="!laTemplateDetail.tasks.length">还没有任务，添加后才能发布</p>
+            <div class="modal-actions">
+              <button class="ghost" @click="laTemplateDetail=null">关闭</button>
+              <button class="ghost" @click="openTaskEdit(null)">➕ 添加任务</button>
+              <button class="primary" v-if="laTemplateDetail.plan.status!=='published'" @click="publishTemplate(laTemplateDetail.plan)">发布</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：任务编辑 -->
+        <div class="modal" v-if="laTaskEditing" @click.self="laTaskEditing=null">
+          <div class="modal-card">
+            <h3>{{ laTaskEditing.id ? '编辑任务' : '添加任务' }}</h3>
+            <label>标题 <input v-model="laTaskEditing.title" placeholder="如：背诵古诗三首" /></label>
+            <label>学科
+              <select v-model="laTaskEditing.subject_id">
+                <option :value="null">综合</option>
+                <option v-for="s in laSubjects" :key="s.id" :value="s.id">{{ s.emoji }} {{ s.name }}</option>
+              </select>
+            </label>
+            <label>完成标准 <input v-model="laTaskEditing.completion_criteria" placeholder="可选" /></label>
+            <label>预计耗时（分钟） <input v-model.number="laTaskEditing.est_minutes" type="number" min="1" /></label>
+            <label>截止日期（可选） <input v-model="laTaskEditing.due_date" type="date" /></label>
+            <label>奖励积分 <input v-model.number="laTaskEditing.reward_points" type="number" min="0" /></label>
+            <label>奖励宠物经验 <input v-model.number="laTaskEditing.reward_xp" type="number" min="0" /></label>
+            <label>排序 <input v-model.number="laTaskEditing.sort_order" type="number" /></label>
+            <div class="modal-actions">
+              <button class="ghost" @click="laTaskEditing=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="saveTemplateTask">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：批量指派 -->
+        <div class="modal" v-if="laAssign" @click.self="laAssign=null">
+          <div class="modal-card">
+            <h3>指派模板：{{ laAssign.name }}</h3>
+            <p class="muted">按班级优先；已有实例的学生自动跳过（幂等）</p>
+            <label>按班级（优先）
+              <select v-model="laAssign.class_id">
+                <option :value="null">不限班级</option>
+                <option v-for="c in laClasses" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </label>
+            <label>或按年级（未选班级时生效）
+              <select v-model="laAssign.grade">
+                <option :value="null">不限年级</option>
+                <option v-for="g in [1,2,3,4,5,6]" :key="g" :value="g">{{ g }} 年级</option>
+              </select>
+            </label>
+            <div class="modal-actions">
+              <button class="ghost" @click="laAssign=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="assignTemplate">确认指派</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 弹窗：驳回理由 -->
+        <div class="modal" v-if="laReviewing" @click.self="laReviewing=null">
+          <div class="modal-card">
+            <h3>驳回提交</h3>
+            <p class="muted">{{ laReviewing.user_nickname }} · {{ laReviewing.task_title }}</p>
+            <label>驳回理由 <input v-model="laReviewNote" placeholder="如：照片不清晰，请重新提交" /></label>
+            <div class="modal-actions">
+              <button class="ghost" @click="laReviewing=null">取消</button>
+              <button class="primary" :disabled="laBusy" @click="laRejectConfirm">确认驳回</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 成长农场（新模块，逻辑在 farm.js） ==================== -->
+      <section v-if="view==='farm'">
+        <div class="bar">
+          <h2>🌱 成长农场</h2>
+          <div style="flex:1"></div>
+          <button class="mini" :class="{on:faTab==='overview'}" @click="switchFaTab('overview')">📊 概览</button>
+          <button class="mini" :class="{on:faTab==='config'}" @click="switchFaTab('config')">⚙️ 配置</button>
+          <button class="mini" :class="{on:faTab==='templates'}" @click="switchFaTab('templates')">🎨 模板</button>
+        </div>
+
+        <!-- 子页：数据概览 -->
+        <template v-if="faTab==='overview'">
+          <div class="stats" v-if="faOverview">
+            <div class="stat"><div class="v">{{ faOverview.total_farms }}</div><div class="k">已开通农场</div></div>
+            <div class="stat"><div class="v">{{ faOverview.total_energy_earned }}</div><div class="k">累计获得能量 ⚡</div></div>
+            <div class="stat"><div class="v">{{ faOverview.total_energy_balance }}</div><div class="k">存量能量 ⚡</div></div>
+            <div class="stat"><div class="v">{{ faOverview.total_forest }}</div><div class="k">育成森林 🌲</div></div>
+          </div>
+          <div class="data-card">
+            <h3>能量排行榜 Top10</h3>
+            <p class="muted" v-if="!faOverview || !faOverview.top_farms.length">暂无农场数据</p>
+            <table v-else>
+              <tr><th>#</th><th>学生</th><th>乐园名</th><th>累计能量</th><th>森林</th></tr>
+              <tr v-for="(f, i) in faOverview.top_farms" :key="i">
+                <td>{{ i + 1 }}</td>
+                <td>{{ f.nickname }}</td>
+                <td>{{ f.name }}</td>
+                <td>⚡ {{ f.total_energy_earned }}</td>
+                <td>🌲 {{ f.forest_count }}</td>
+              </tr>
+            </table>
+          </div>
+        </template>
+
+        <!-- 子页：站点配置 -->
+        <div v-if="faTab==='config'" class="data-card" style="max-width:520px">
+          <label>默认乐园名（学生开通时未起名则使用）
+            <input v-model="faConfig.farm_default_name" maxlength="32" placeholder="我的成长乐园" />
+          </label>
+          <div class="modal-actions">
+            <button class="primary" :disabled="faBusy" @click="saveFaConfig">{{ faBusy ? '保存中…' : '保存配置' }}</button>
+          </div>
+          <p class="muted">清空后回退内置默认名「我的成长乐园」；不影响已开通农场。</p>
+        </div>
+
+        <!-- 子页：模板管理 -->
+        <div v-if="faTab==='templates'" class="data-card">
+          <p class="muted">停用后新用户不可选，已开通农场不受影响。</p>
+          <table>
+            <tr><th>模板</th><th>标识</th><th>使用中农场</th><th>状态</th><th>操作</th></tr>
+            <tr v-for="t in faTemplates" :key="t.id">
+              <td>{{ t.name }}</td>
+              <td>{{ t.key }}</td>
+              <td>{{ t.farm_count }}</td>
+              <td>{{ t.status === 'on' ? '✅ 启用' : '⛔ 停用' }}</td>
+              <td>
+                <button class="mini" :disabled="faBusy" @click="toggleFaTemplate(t)">
+                  {{ t.status === 'on' ? '停用' : '启用' }}
+                </button>
+              </td>
+            </tr>
+          </table>
+          <p class="muted" v-if="!faTemplates.length">暂无模板（运行一次种子初始化即可写入内置模板）</p>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -1270,6 +1735,8 @@
   </div>
 </div>
 
-<script src="./app.js?v=20260808"></script>
+<script src="./learning.js?v=20260830"></script>
+<script src="./farm.js?v=20260830"></script>
+<script src="./app.js?v=20260830"></script>
 </body>
 </html>

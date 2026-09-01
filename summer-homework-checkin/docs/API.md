@@ -108,6 +108,10 @@
 | PATCH | `/api/parent/notifications/{nid}/read` | 家长 | 标记通知已读 |
 | GET | `/api/parent/child-report/{child_id}` | 家长 | 孩子报告（JSON） |
 | GET | `/api/parent/child-report/{child_id}/html` | 家长 | 孩子报告（HTML 可视化） |
+| GET | `/api/parent/learning/plans/{child_id}` | 家长 | 孩子学习计划与任务列表（四态 + 进度汇总） |
+| GET | `/api/parent/learning/summary/{child_id}` | 家长 | 孩子学习概览（连学天数/环进度/勋章数） |
+| GET | `/api/parent/learning/submissions/pending` | 家长 | 孩子待审核提交（仅 `review_mode=parent` 时可用） |
+| PUT | `/api/parent/learning/submissions/{sid}/review` | 家长 | 家长审核（通过/驳回，通过触发积分+宠物XP联动） |
 
 ---
 
@@ -130,6 +134,28 @@
 | PUT | `/api/admin/push-config` | 管理员 | 保存推送配置（开关/渠道/Webhook URL 白名单校验/事件过滤/限频） |
 | POST | `/api/admin/push-config/test` | 管理员 | 发送测试消息到当前配置的群机器人 |
 | GET | `/api/admin/push-logs` | 管理员 | 推送日志列表（不含 Webhook URL，已脱敏） |
+| GET | `/api/admin/learning/config` | 管理员 | 学习计划全局配置（运行模式/审核模式/当前学期） |
+| PUT | `/api/admin/learning/config` | 管理员 | 切换运行模式（summer/semester/holiday）与审核模式（auto/parent/admin） |
+| GET/POST | `/api/admin/learning/subjects` | 管理员 | 学科列表 / 新建学科 |
+| PUT/DELETE | `/api/admin/learning/subjects/{sid}` | 管理员 | 编辑 / 删除学科（预设学科禁删） |
+| GET/POST | `/api/admin/learning/semesters` | 管理员 | 学期（含寒假/暑假周期）列表 / 新建 |
+| PUT/DELETE | `/api/admin/learning/semesters/{sid}` | 管理员 | 编辑 / 删除学期 |
+| GET/POST | `/api/admin/learning/classes` | 管理员 | 班级列表（含成员数）/ 新建班级 |
+| PUT/DELETE | `/api/admin/learning/classes/{cid}` | 管理员 | 编辑 / 删除班级 |
+| POST | `/api/admin/learning/classes/{cid}/members` | 管理员 | 批量分班（body: student_ids[]） |
+| GET | `/api/admin/learning/students` | 管理员 | 学生列表（分班选择器用，含班级归属） |
+| GET/POST | `/api/admin/learning/templates` | 管理员 | 计划模板列表 / 新建模板 |
+| GET/PUT/DELETE | `/api/admin/learning/templates/{tid}` | 管理员 | 模板详情（含任务）/ 编辑 / 删除 |
+| POST | `/api/admin/learning/templates/{tid}/tasks` | 管理员 | 模板新增任务 |
+| PUT/DELETE | `/api/admin/learning/tasks/{task_id}` | 管理员 | 编辑 / 删除模板任务 |
+| POST | `/api/admin/learning/templates/{tid}/publish` | 管理员 | 发布模板（学生端可见） |
+| POST | `/api/admin/learning/templates/{tid}/assign` | 管理员 | 批量指派实例化（按 class_id 或 grade，幂等跳过已有实例） |
+| GET | `/api/admin/learning/submissions` | 管理员 | 提交审核队列（状态筛选 + 分页） |
+| PUT | `/api/admin/learning/submissions/{sid}/review` | 管理员 | 审核提交（通过触发奖励联动，部分唯一索引防重复发奖） |
+| GET | `/api/admin/farm/overview` | 管理员 | 成长农场概览（农场数/能量汇总/森林总数/Top10 排行） |
+| GET/PUT | `/api/admin/farm/config` | 管理员 | 站点默认乐园名（置空回退内置默认） |
+| GET | `/api/admin/farm/templates` | 管理员 | 农场模板列表（含使用中农场数） |
+| PUT | `/api/admin/farm/templates/{tpl_id}` | 管理员 | 模板启停（停用后不可新选，已开通农场不受影响） |
 
 ---
 
@@ -189,5 +215,47 @@
 | GET | `/api/health` | 否 | 健康检查，返回 `{"status":"ok"}` |
 | GET | `/docs` | 否 | Swagger UI |
 | GET | `/openapi.json` | 否 | OpenAPI 规范 |
+| WS | `/api/ws/notifications?token=` | `?token=` JWT | 实时通知推送（心跳 30s ping；凭证无效关闭 4401；断线前端降级轮询） |
+
+---
+
+## 13. 学习成长计划 `/api/learning`（学生端）
+
+> 模板按年级/班级隔离；任务四态（todo/doing/done 存库，overdue 查询时计算）；
+> 审核通过后联动发积分 + 随机活跃宠物 XP（feed_type=task）+ 双向通知 + 勋章。
+> 审核模式由管理端 `review_mode` 决定：auto（提交即过）/ parent（家长审核）/ admin（管理员审核）。
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/learning/config` | 学生 | 运行模式/审核模式/当前学期/我的班级 |
+| GET | `/api/learning/subjects` | 学生 | 启用中学科（按年级学段过滤） |
+| GET | `/api/learning/templates` | 学生 | 可见模板（已发布 + 年级/班级匹配） |
+| POST | `/api/learning/plans/instantiate` | 学生 | 实例化模板为个人计划（幂等：已有实例返回既有） |
+| GET | `/api/learning/plans` | 学生 | 我的计划列表（含进度汇总） |
+| GET | `/api/learning/plans/{plan_id}` | 学生 | 计划详情（任务四态 + 进展/提交记录，校验归属） |
+| GET | `/api/learning/summary` | 学生 | 首页卡片（连学天数/环进度/勋章数） |
+| GET | `/api/learning/badges` | 学生 | 勋章墙（已解锁 + 未解锁灰态） |
+| POST | `/api/learning/tasks/{task_id}/progress` | 学生 | 记录进展（todo→doing 自动流转，percent 钳制 0-100） |
+| POST | `/api/learning/tasks/{task_id}/submit` | 学生 | multipart 提交成果（文字 + 可选照片，进入审核流） |
+| GET | `/api/learning/notifications/unread` | 学生 | 未读通知数与列表（WS 断线降级轮询用） |
+
+## 14. 成长农场 `/api/farm`（学生端）
+
+> 能量经济：学习任务审核通过 +10 ⚡、打卡审核通过 +5 ⚡；开通时历史已审核成果一次性回填（`backfilled` 守卫去重）。
+> 消耗：种菜 -20（120 分钟成熟，收获 +30）、养殖 -50（480 分钟长成，收获 +80）、浇树 -50/次。
+> 成长树累计注入 1500 能量育成大树：森林 +1、成长树归零循环；阶段门槛 100/400/900，地块上限 = 4 + 阶段 + 森林数。
+> 未开通时调用任何操作接口返回 400；实时钩子在无农场/未回填时静默跳过（能量不丢失）。
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/farm/status` | 学生 | 农场总览；未开通时返回模板清单 + 站点默认名 + 能量规则 |
+| GET | `/api/farm/templates` | 学生 | 启用中的农场模板（田园/科幻/卡通） |
+| POST | `/api/farm/init` | 学生 | 开通农场（body: [name]≤32, [template_key]），历史能量一次性回填 |
+| PUT | `/api/farm/rename` | 学生 | 个性化改名（body: name 1-32 字符） |
+| PUT | `/api/farm/template` | 学生 | 切换模板（停用模板 400，已种地块不受影响） |
+| POST | `/api/farm/plant` | 学生 | 种植/领养（body: plot_type=crop\|animal, item_key；模板外素材/能量不足/地块满 400） |
+| POST | `/api/farm/harvest/{plot_id}` | 学生 | 收获（未成熟/重复收获 400；他人地块 404 防探测） |
+| POST | `/api/farm/water` | 学生 | 浇树（-50 ⚡，阶段提升/育成大树发通知） |
+| GET | `/api/farm/energy-log` | 学生 | 能量流水（分页，最新在前；含来源/变动/余额/备注） |
 
 > **提示**：`points-system`（端口 8001）为独立系统，其奖品接口为 `/api/prizes`（非 `/api/products`），健康检查同为 `/api/health`。

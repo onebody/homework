@@ -202,8 +202,14 @@ def approve_checkin(db, ci, note=None):
     db.commit()
     db.refresh(user)
 
+    # 成长农场：打卡审核通过 → 转化成长能量（未开通农场静默跳过，开通时回填）
+    from . import farm_service
+    farm_gain = farm_service.on_checkin_approved(db, user.id, ci.id)
+
     # 构建通知消息（包含积分 + 宠物成长信息）
     msg = f"你于 {ci.check_time.strftime('%Y-%m-%d %H:%M')} 的打卡已审核通过，当前积分 {user.points}。"
+    if farm_gain:
+        msg += f" 成长能量 +{farm_gain}⚡"
     if pet_result:
         pet_msg = f"宠物成长 +{pet_result['xp_gained']} XP"
         if pet_result["stage_changed"]:

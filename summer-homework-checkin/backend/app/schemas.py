@@ -401,3 +401,180 @@ class PushLogOut(BaseModel):
 
 class PushTestRequest(BaseModel):
     channel: str  # dingtalk|wechat
+
+
+# ── 多学段学习成长计划 ─────────────────────────────────────────────
+
+class SubjectIn(BaseModel):
+    name: str
+    emoji: str = "📚"
+    grade_min: int = 1
+    grade_max: int = 6
+    sort_order: int = 0
+    status: str = "on"
+
+
+class SubjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    emoji: str = "📚"
+    grade_min: int = 1
+    grade_max: int = 6
+    sort_order: int = 0
+    status: str = "on"
+    is_preset: bool = False
+
+
+class ClassGroupIn(BaseModel):
+    name: str
+    grade: int
+
+
+class ClassGroupOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    grade: int
+    member_count: int = 0  # 路由层填充
+
+
+class ClassMembersRequest(BaseModel):
+    student_ids: list[int]
+
+
+class SemesterIn(BaseModel):
+    name: str
+    type: str = "semester"          # semester|holiday|summer
+    start_date: date
+    end_date: date
+    status: str = "archived"        # active|archived
+
+
+class SemesterOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    type: str
+    start_date: date
+    end_date: date
+    status: str
+
+
+class TaskIn(BaseModel):
+    """模板/实例任务创建与更新（字段均可选，更新时只改传入项）。"""
+    subject_id: int | None = None
+    title: str | None = None
+    completion_criteria: str | None = None
+    est_minutes: int | None = 30
+    due_date: date | None = None
+    reward_points: int | None = 10
+    reward_xp: int | None = 10
+    sort_order: int | None = 0
+
+
+class TaskOut(BaseModel):
+    id: int
+    plan_id: int
+    subject_id: int | None = None
+    subject_name: str | None = None
+    subject_emoji: str | None = None
+    title: str
+    completion_criteria: str | None = None
+    est_minutes: int = 30
+    due_date: date | None = None
+    reward_points: int = 10
+    reward_xp: int = 10
+    sort_order: int = 0
+    status: str = "todo"            # 存储三态 todo|doing|done
+    computed_status: str = "todo"   # 四态（含 overdue，查询时计算）
+    done_at: datetime | None = None
+    # 路由层填充的当前用户上下文（实例任务才有）
+    progress_percent: int = 0       # 最新进展百分比
+    submission: dict | None = None  # 最近一次提交摘要 {id, review_status, review_note, created_at}
+
+
+class PlanOut(BaseModel):
+    id: int
+    plan_type: str                  # template|instance
+    name: str
+    description: str | None = None
+    semester_id: int | None = None
+    semester_name: str | None = None
+    grade: int | None = None
+    class_id: int | None = None
+    class_name: str | None = None
+    period_type: str = "week"
+    status: str = "draft"
+    student_id: int | None = None
+    instantiated_from: int | None = None
+    task_count: int = 0
+    # 实例计划才有进度汇总（路由层填充）
+    progress: dict | None = None
+
+
+class InstantiateRequest(BaseModel):
+    template_id: int
+
+
+class ProgressIn(BaseModel):
+    note: str | None = None
+    minutes_spent: int = 0
+    percent: int = 0
+
+
+class LearningConfigIn(BaseModel):
+    mode: str | None = None             # summer|semester|holiday
+    review_mode: str | None = None      # auto|parent|admin
+    current_semester_id: int | None = None
+
+
+class LearningConfigOut(BaseModel):
+    mode: str = "summer"
+    review_mode: str = "admin"
+    current_semester_id: int | None = None
+    semester_name: str | None = None
+    semester_range: str | None = None   # "2026-09-01 ~ 2027-01-15"
+    class_name: str | None = None       # 当前学生所在班级（前端展示）
+
+
+class SubmissionOut(BaseModel):
+    id: int
+    task_id: int
+    task_title: str = ""
+    user_id: int
+    user_nickname: str = ""
+    content: str | None = None
+    photo_url: str = ""
+    review_status: str = "pending"
+    review_note: str | None = None
+    reviewer_role: str | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+
+
+class SubmissionReviewRequest(BaseModel):
+    approved: bool
+    note: str | None = None
+
+
+class PlanAssignRequest(BaseModel):
+    """模板批量指派实例化：三选一优先级 class_id > grade > student_ids。"""
+    class_id: int | None = None
+    grade: int | None = None
+    student_ids: list[int] | None = None
+
+
+class LearningSummaryOut(BaseModel):
+    """学生端首页学习卡片。"""
+    mode: str
+    study_streak: int = 0
+    study_longest_streak: int = 0
+    active_plans: int = 0
+    percent: int = 0                    # 活跃计划综合完成度（环比均值）
+    done_tasks: int = 0
+    total_tasks: int = 0
+    pending_tasks: int = 0              # 未完成且未逾期任务数（今日待办参考）
+    overdue_tasks: int = 0
+    badge_count: int = 0
+

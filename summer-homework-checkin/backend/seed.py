@@ -6,7 +6,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base, engine, SessionLocal
-from app.models import Prize, User, ChallengeTask, PetSpecies, PetFeedItem, PetAdoption, PetFeedLog
+from app.models import Prize, User, ChallengeTask, PetSpecies, PetFeedItem, PetAdoption, PetFeedLog, Subject
 from app.security import hash_password
 
 
@@ -121,6 +121,107 @@ _DIET_TYPE_BY_NAME = {
 }
 
 
+# ---------- 学习成长计划：预设学科（小学 1-6 年级标准学科框架） ----------
+# (name, emoji, grade_min, grade_max, sort_order)
+LEARNING_SUBJECTS_SEED = [
+    ("语文", "📖", 1, 6, 1),
+    ("数学", "🔢", 1, 6, 2),
+    ("英语", "🔤", 3, 6, 3),       # 多数地区三年级起开设
+    ("科学", "🔬", 3, 6, 4),
+    ("道德与法治", "🤝", 1, 6, 5),
+    ("美术", "🎨", 1, 6, 6),
+    ("体育", "⚽", 1, 6, 7),
+    ("音乐", "🎵", 1, 6, 8),
+]
+
+
+def seed_learning_presets(db):
+    """幂等：仅当 subjects 表为空时写入预设学科（不进迁移体，兼容 create_all 首部署）。"""
+    if db.query(Subject).count() == 0:
+        for name, emoji, gmin, gmax, order in LEARNING_SUBJECTS_SEED:
+            db.add(Subject(
+                name=name, emoji=emoji, grade_min=gmin, grade_max=gmax,
+                sort_order=order, status="on", is_preset=True,
+            ))
+        db.commit()
+        print(f"✅ 已写入 {len(LEARNING_SUBJECTS_SEED)} 个预设学科")
+    else:
+        print("ℹ️ 学科数据已存在，跳过")
+
+
+# ---------- 成长农场：内置模板（田园/科幻/卡通） ----------
+FARM_TEMPLATES_SEED = [
+    {
+        "key": "pastoral", "name": "田园风·稻香小镇", "sort_order": 1,
+        "description": "金黄麦田与红瓦农舍，经典田园治愈风。",
+        "style_class": "tpl-pastoral", "tree_emoji": "🌳",
+        "crop_items": [
+            {"key": "carrot", "name": "胡萝卜", "emoji": "🥕"},
+            {"key": "tomato", "name": "番茄", "emoji": "🍅"},
+            {"key": "corn", "name": "玉米", "emoji": "🌽"},
+            {"key": "wheat", "name": "小麦", "emoji": "🌾"},
+        ],
+        "animal_items": [
+            {"key": "chick", "name": "小鸡", "emoji": "🐔"},
+            {"key": "sheep", "name": "绵羊", "emoji": "🐑"},
+            {"key": "cow", "name": "奶牛", "emoji": "🐄"},
+        ],
+    },
+    {
+        "key": "scifi", "name": "科幻风·星际温室", "sort_order": 2,
+        "description": "太空舱内的水培温室，培育发光外星植物。",
+        "style_class": "tpl-scifi", "tree_emoji": "🌲",
+        "crop_items": [
+            {"key": "starfruit", "name": "星光果", "emoji": "⭐"},
+            {"key": "moonshroom", "name": "月球菇", "emoji": "🍄"},
+            {"key": "crystalgrass", "name": "水晶草", "emoji": "🔮"},
+            {"key": "meteorflower", "name": "陨石花", "emoji": "🌺"},
+        ],
+        "animal_items": [
+            {"key": "robotpet", "name": "机器宠", "emoji": "🤖"},
+            {"key": "alien", "name": "小外星人", "emoji": "👾"},
+            {"key": "mooncat", "name": "月球猫", "emoji": "🐱"},
+        ],
+    },
+    {
+        "key": "cartoon", "name": "卡通风·糖果农庄", "sort_order": 3,
+        "description": "棉花糖云朵下的彩色农庄，一切甜甜的。",
+        "style_class": "tpl-cartoon", "tree_emoji": "🌴",
+        "crop_items": [
+            {"key": "strawberry", "name": "草莓", "emoji": "🍓"},
+            {"key": "lollipop", "name": "棒棒糖花", "emoji": "🍭"},
+            {"key": "pumpkin", "name": "南瓜", "emoji": "🎃"},
+            {"key": "sunflower", "name": "向日葵", "emoji": "🌻"},
+        ],
+        "animal_items": [
+            {"key": "bunny", "name": "兔兔", "emoji": "🐰"},
+            {"key": "piggy", "name": "小猪", "emoji": "🐷"},
+            {"key": "duck", "name": "小黄鸭", "emoji": "🦆"},
+        ],
+    },
+]
+
+
+def seed_farm_templates(db):
+    """幂等：仅当 farm_templates 表为空时写入内置农场模板。"""
+    from app.models import FarmTemplate
+    import json as _json
+    if db.query(FarmTemplate).count() == 0:
+        for t in FARM_TEMPLATES_SEED:
+            db.add(FarmTemplate(
+                key=t["key"], name=t["name"], description=t["description"],
+                style_class=t["style_class"], tree_emoji=t["tree_emoji"],
+                crop_items=_json.dumps(t["crop_items"], ensure_ascii=False),
+                animal_items=_json.dumps(t["animal_items"], ensure_ascii=False),
+                status="on", sort_order=t["sort_order"],
+            ))
+        db.commit()
+        print(f"✅ 已写入 {len(FARM_TEMPLATES_SEED)} 个农场模板")
+    else:
+        print("ℹ️ 农场模板已存在，跳过")
+
+
+
 def seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -201,6 +302,10 @@ def seed():
             print("✅ 已创建 4 个示例闯关任务")
         else:
             print("ℹ️ 闯关任务已存在，跳过")
+        # ---------- 学习成长计划：预设学科 ----------
+        seed_learning_presets(db)
+        # ---------- 成长农场：内置模板 ----------
+        seed_farm_templates(db)
         # ---------- 🛡️ 宠物种类种子数据（受保护） ----------
         # 保护策略：
         #   1. 表非空时绝不重新插入（避免 ID 漂移导致领养记录外键断裂）

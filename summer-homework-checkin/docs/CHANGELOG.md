@@ -5,6 +5,45 @@
 
 ---
 
+## v1.7.0（2026-08-30）— 成长农场（farm 模块）
+
+### 新增
+- **成长农场游戏模块**：4 张新表（farm_templates / farms / farm_plots / farm_energy_log）+ 1 处可空 ALTER（site_config.farm_default_name），Alembic 016 幂等防御式迁移；既有数据零触碰。
+- **能量转化与农场养成**：学习任务审核通过 +10 ⚡、打卡审核通过 +5 ⚡（`approve_submission`/`approve_checkin` 审核联动挂钩，延迟导入避免循环依赖）；开通时历史已审核成果一次性回填（`backfilled` 守卫去重，无农场时钩子静默跳过不丢能量）。
+- **养成玩法**：种菜 -20 ⚡（120 分钟成熟，收获 +30）、养殖 -50 ⚡（480 分钟长成，收获 +80）、浇树 -50 ⚡/次；成长树累计 1500 能量育成大树（森林 +1 归零循环），阶段门槛 100/400/900，地块上限 = 4 + 阶段 + 森林数；能量全量流水可查。
+- **个性化命名**：学生开通时自定义（≤32 字符）+ 随时改名；管理员可配置站点默认乐园名（置空回退内置默认）。
+- **模板选择机制**：内置 3 模板——田园·稻香小镇 / 科幻·星际温室 / 卡通·糖果农庄（`seed.py` 幂等种子），各自独立作物/动物素材与场景风格；可随时切换，管理端可启停（停用后不可新选，已开通农场不受影响）。
+- **学生端成长农场视图**：独立 `farm.js`（mixin 注入）+ `farm.css`；底部新增 🌱 tab；开通引导（能量规则 + 模板选择 + 命名）、农场场景（乐园头部/成长树进度/地块网格/成熟高亮）、能量流水分页；三模板主题色 + default/cartoon 双站点主题适配。
+- **管理端成长农场子页**：数据概览（农场数/能量汇总/森林总数/Top10 排行）+ 默认乐园名配置 + 模板启停，独立 `farm.js` mixin。
+- **测试**：`tests/test_farm.py` 8 组用例（回填去重/能量收支/收获循环/地块上限/森林育成/越权 404/改名校验/模板启停），`pytest tests/` 63 用例全绿；E2E 28 项全过。
+
+### 修复
+- `migrate.py` 首部署建表缺陷：`create_all` 前先导入 `app.models` 注册 metadata（此前 metadata 为空，建表实为 seed 兜底完成），并在建表后 `engine.dispose()` 防连接池缓存旧状态。
+- `/api/farm/status` 已开通时也返回能量规则 `rules`（前端种植/浇树消耗展示依赖）。
+
+---
+
+## v1.6.0（2026-08-30）— 多学段学习成长计划（learning 模块，后端 API 版本号 1.3.0）
+
+### 新增
+- **学习成长计划模块**：9 张新表（subjects / class_groups / semesters / learning_plans / learning_tasks / progress_records / task_submissions / user_badges / learning_config）+ 3 处可空 ALTER（users.class_id、users.study_streak/study_longest_streak、pet_feed_log.trigger_task_submission_id），Alembic 014/015 幂等迁移；暑期打卡数据零触碰。
+- **模板→实例化**：`learning_plans` 单表双角色（template/instance），学生实例化后任务独立推进（`template_task_id` 回链），同模板重复实例化幂等返回既有实例；模板按年级/班级隔离，越权构造 403。
+- **任务四态**：todo/doing/done 存库，逾期（overdue）由 `computed_status()` 查询时计算绝不写库；进展记录驱动 todo→doing 自动流转。
+- **审核联动对齐 `approve_checkin` 范式**：审核通过 → 发积分 → 重算连学天数 → 随机活跃宠物 +XP（`feed_type="task"` 流水）→ 双向通知 → 勋章判定（plan_first/streak7/full_plan 等，幂等）；支持 auto（提交即过）/ parent（家长审核）/ admin（管理员审核）三种模式运行时切换。
+- **WebSocket 实时通知**：`/api/ws/notifications?token=` 鉴权建连，30s 心跳剔除死连接，推送失败静默；前端指数退避重连（1/2/4s…30s 上限），连续 3 次失败降级 30s 轮询 `/api/learning/notifications/unread`，通知不丢。
+- **学生端计划视图**：独立 `plan.js`（mixin 注入，app.js 仅 +2 行）+ `plan.css`；SVG stroke-dasharray 环形进度、四态任务卡、勋章墙；学期/假期模式默认落地计划视图并展示今日待办，暑期打卡入口任何模式下保留；default/cartoon 双主题 CSS 变量适配。
+- **家长端**：孩子计划监督视图（环进度 + 任务列表）与内联审核（仅 `review_mode=parent`，经 `_resolve_child` 校验绑定）。
+- **管理端学习计划菜单**：学科/学期/班级（含批量分班）/模板（任务维护、发布、按班级或年级批量指派）/审核队列 6 子页 + 运行模式与审核模式配置；全流程无需改库。
+- **预设学科**：`seed.py` 新增 `seed_learning_presets()` 幂等预置 8 学科（按学段下限/上限过滤）。
+- **测试**：`tests/test_learning_plan.py` 8 组 30 用例（四态边界/模板隔离/实例化幂等/三模式审核/文件库 10 线程并发恰 1 approved/连学天数/模式切换回归/进展记录），`pytest tests/` 55 用例全绿。
+
+### 安全 / 兼容
+- 并发重复发奖双保险：部分唯一索引 `UNIQUE(task_id) WHERE review_status='approved'`（014 迁移）+ `approve_submission` 服务层幂等守卫。
+- CSP 同步放宽 `connect-src 'self' ws: wss:`（后端 main.py 与 nginx 两处）；nginx 增加 WebSocket Upgrade/Connection 头与 3600s 超时。
+- 全部字段可空新增，`/api/parent/*` 既有签名不变；切回 summer 模式后 checkins/积分/宠物数据逐项不变（回归测试覆盖）。
+
+---
+
 ## v1.5.0（2026-08-20）— 宠物乐园·食物适配性校验与生态反馈
 
 ### 新增
